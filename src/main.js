@@ -146,37 +146,43 @@ function initializeGameWorld(existingSeed = null) {
   travelSystem = new TravelSystem(player, territoryManager);
   console.log(`🚶 TravelSystem initialized`);
   
-  // Find suitable starting position (beach or land near center)
+  // Find suitable starting position - use the castaway beach strategic location
   let startTile = null;
   
-  // First try to find a beach tile
-  const beachTiles = Array.from(mapData.tiles.values())
-    .filter(t => t.terrain === 'beach' && t.isLand);
-  
-  console.log(`🔍 Found ${beachTiles.length} beach tiles`);
-  
-  if (beachTiles.length > 0) {
-    // Pick a beach tile closest to center
-    startTile = beachTiles.reduce((closest, tile) => {
-      const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
-      const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
-      return distFromCenter < closestDist ? tile : closest;
-    });
-    console.log(`🏖️ Selected beach at (${startTile.q}, ${startTile.r})`);
+  // Use the designated castaway beach from strategic locations
+  if (mapData.strategicLocations?.castawayBeach?.tile) {
+    startTile = mapData.strategicLocations.castawayBeach.tile;
+    console.log(`🏖️ Using Castaway Beach at (${startTile.q}, ${startTile.r})`);
   } else {
-    // Fallback: find any land tile near center
-    const landTiles = Array.from(mapData.tiles.values())
-      .filter(t => t.isLand && t.isPassable);
+    // Fallback: find a beach tile if strategic location failed
+    const beachTiles = Array.from(mapData.tiles.values())
+      .filter(t => t.terrain === 'beach' && t.isLand);
     
-    console.log(`🔍 Fallback: Found ${landTiles.length} land tiles`);
+    console.log(`🔍 Fallback: Found ${beachTiles.length} beach tiles`);
     
-    if (landTiles.length > 0) {
-      startTile = landTiles.reduce((closest, tile) => {
+    if (beachTiles.length > 0) {
+      // Pick a beach tile closest to center
+      startTile = beachTiles.reduce((closest, tile) => {
         const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
         const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
         return distFromCenter < closestDist ? tile : closest;
       });
-      console.log(`🌴 Selected ${startTile.terrain} at (${startTile.q}, ${startTile.r})`);
+      console.log(`🏖️ Fallback beach at (${startTile.q}, ${startTile.r})`);
+    } else {
+      // Last resort: find any land tile near center
+      const landTiles = Array.from(mapData.tiles.values())
+        .filter(t => t.isLand && t.isPassable);
+      
+      console.log(`🔍 Last resort: Found ${landTiles.length} land tiles`);
+      
+      if (landTiles.length > 0) {
+        startTile = landTiles.reduce((closest, tile) => {
+          const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
+          const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
+          return distFromCenter < closestDist ? tile : closest;
+        });
+        console.log(`🌴 Last resort land at (${startTile.q}, ${startTile.r})`);
+      }
     }
   }
   

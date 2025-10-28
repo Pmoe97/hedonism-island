@@ -6179,6 +6179,7 @@ class MapRenderer {
     this.offsetX = 0;
     this.offsetY = 0;
     this.scale = 1;
+    this.fogOfWarEnabled = false;
     this.terrainColors = {
       "sea": "#1e3a8a",
       "beach": "#fde047",
@@ -6230,9 +6231,32 @@ class MapRenderer {
     const brightness = tile.isLand ? 1 + (tile.elevation - 0.5) * 0.4 : 1;
     this.ctx.fillStyle = this.adjustBrightness(baseColor, brightness);
     this.ctx.fill();
+    if (tile.faction && tile.faction !== "neutral") {
+      const territoryColors = {
+        "castaways": "rgba(251, 191, 36, 0.15)",
+        // Yellow
+        "tidalClan": "rgba(59, 130, 246, 0.15)",
+        // Blue
+        "ridgeClan": "rgba(132, 204, 22, 0.15)",
+        // Green
+        "mercenaries": "rgba(220, 38, 38, 0.15)"
+        // Red
+      };
+      const territoryColor = territoryColors[tile.faction];
+      if (territoryColor) {
+        this.ctx.fillStyle = territoryColor;
+        this.ctx.fill();
+      }
+    }
     this.ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
     this.ctx.lineWidth = 1;
     this.ctx.stroke();
+    if (tile.isFrontier && tile.faction && tile.faction !== "neutral") {
+      this.renderTerritoryBorders(tile, corners);
+    }
+    if (tile.isStrategic) {
+      this.renderStrategicMarker(tile);
+    }
     if (this.scale > 0.8) {
       const center = this.hexGrid.axialToPixel(tile.q, tile.r);
       this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
@@ -6244,6 +6268,113 @@ class MapRenderer {
       this.ctx.font = "6px monospace";
       this.ctx.fillText(tile.terrain || "?", center.x, center.y + 6);
     }
+  }
+  /**
+   * Render territory borders between different factions
+   */
+  renderTerritoryBorders(tile, corners) {
+    const borderColors = {
+      "castaways": "#fbbf24",
+      "tidalClan": "#3b82f6",
+      "ridgeClan": "#84cc16",
+      "mercenaries": "#dc2626"
+    };
+    const borderColor = borderColors[tile.faction] || "#666";
+    this.ctx.strokeStyle = borderColor;
+    this.ctx.lineWidth = 3;
+    this.ctx.lineCap = "round";
+    const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+    for (let i = 0; i < 6; i++) {
+      const neighbor = neighbors[i];
+      if (!neighbor) continue;
+      const neighborTile = this.getTile?.(neighbor.q, neighbor.r);
+      if (!neighborTile) continue;
+      if (neighborTile.faction !== tile.faction) {
+        const startCorner = corners[i];
+        const endCorner = corners[(i + 1) % 6];
+        this.ctx.beginPath();
+        this.ctx.moveTo(startCorner.x, startCorner.y);
+        this.ctx.lineTo(endCorner.x, endCorner.y);
+        this.ctx.stroke();
+      }
+    }
+  }
+  // Helper method to get tile (needs to be added)
+  getTile(q, r) {
+    return window.game?.mapData?.tiles?.get(`${q},${r}`);
+  }
+  /**
+   * Render special markers for strategic locations
+   */
+  renderStrategicMarker(tile) {
+    const center = this.hexGrid.axialToPixel(tile.q, tile.r);
+    const location = tile.strategicLocation;
+    if (!location) return;
+    this.ctx.save();
+    this.ctx.translate(center.x, center.y);
+    switch (location.type) {
+      case "starting-point":
+        this.ctx.fillStyle = "#fbbf24";
+        this.ctx.strokeStyle = "#92400e";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#92400e";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("★", 0, 0);
+        break;
+      case "native-village":
+        if (location.faction === "tidal-clan") {
+          this.ctx.fillStyle = "#3b82f6";
+        } else {
+          this.ctx.fillStyle = "#84cc16";
+        }
+        this.ctx.strokeStyle = "#000";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff";
+        this.ctx.font = "bold 14px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("⌂", 0, 0);
+        break;
+      case "hostile-base":
+        this.ctx.fillStyle = "#dc2626";
+        this.ctx.strokeStyle = "#000";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff";
+        this.ctx.font = "bold 14px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("⚔", 0, 0);
+        break;
+      case "sacred-site":
+        this.ctx.fillStyle = "#a78bfa";
+        this.ctx.strokeStyle = "#5b21b6";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fef3c7";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("✦", 0, 0);
+        break;
+    }
+    this.ctx.restore();
   }
   // ========================================
   // CAMERA CONTROLS
@@ -6279,8 +6410,11 @@ class MapRenderer {
   }
   // Convert screen coordinates to hex coordinates
   screenToHex(screenX, screenY) {
-    const worldX = (screenX - this.offsetX) / this.scale;
-    const worldY = (screenY - this.offsetY) / this.scale;
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasX = screenX - rect.left;
+    const canvasY = screenY - rect.top;
+    const worldX = (canvasX - this.offsetX) / this.scale;
+    const worldY = (canvasY - this.offsetY) / this.scale;
     return this.hexGrid.pixelToAxial(worldX, worldY);
   }
 }
@@ -6394,6 +6528,7 @@ class GameView {
             <button class="map-control-btn" id="zoom-out-btn" title="Zoom Out">🔍-</button>
             <button class="map-control-btn" id="center-player-btn" title="Center on Player">🎯</button>
             <button class="map-control-btn" id="toggle-legend-btn" title="Toggle Legend">🗺️</button>
+            <button class="map-control-btn" id="toggle-fog-btn" title="Toggle Fog of War (Debug)">👁️</button>
           </div>
           
           \x3C!-- Tile Info -->
@@ -6560,6 +6695,15 @@ class GameView {
       if (legend) {
         legend.style.display = legend.style.display === "none" ? "block" : "none";
       }
+    });
+    document.getElementById("toggle-fog-btn")?.addEventListener("click", () => {
+      this.renderer.fogOfWarEnabled = !this.renderer.fogOfWarEnabled;
+      const btn = document.getElementById("toggle-fog-btn");
+      if (btn) {
+        btn.title = this.renderer.fogOfWarEnabled ? "Fog of War: ON (Click to disable)" : "Fog of War: OFF (Click to enable)";
+        btn.style.opacity = this.renderer.fogOfWarEnabled ? "1.0" : "0.5";
+      }
+      this.renderPlayerMarker();
     });
     window.addEventListener("resize", () => {
       this.renderer.setupCanvas();
@@ -6771,6 +6915,16 @@ class GameView {
       tile.q,
       tile.r
     );
+    let locationInfo = "";
+    if (tile.isStrategic && tile.strategicLocation) {
+      const loc = tile.strategicLocation;
+      locationInfo = `
+        <div style="background: rgba(139, 92, 246, 0.2); padding: 8px; border-radius: 4px; margin: 8px 0;">
+          <h5 style="margin: 0 0 4px 0; color: #a78bfa;">📍 ${loc.name}</h5>
+          <p style="margin: 0; font-size: 12px; font-style: italic;">${loc.description}</p>
+        </div>
+      `;
+    }
     const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r);
     const node = nodes && nodes.length > 0 ? nodes[0] : null;
     let nodeInfo = "";
@@ -6784,7 +6938,9 @@ class GameView {
         <p><strong>Distance:</strong> ${distance} tiles</p>
         <p><strong>Elevation:</strong> ${Math.round(tile.elevation * 100)}m</p>
         ${tile.isLand ? `<p><strong>Moisture:</strong> ${Math.round(tile.moisture * 100)}%</p>` : ""}
+        ${tile.faction ? `<p><strong>Controlled by:</strong> ${tile.faction}</p>` : ""}
         ${nodeInfo}
+        ${locationInfo}
       </div>
     `;
   }
@@ -8122,17 +8278,21 @@ class MapEngine {
     this.config = {
       radius: 20,
       oceanBoundaryWidth: 1,
-      // Hexes from edge that should be ocean
-      elevationScale: 0.18,
+      // Minimal ocean boundary - land extends to near edge
+      elevationScale: 0.12,
+      // Lower = smoother terrain (less fragmentation)
       moistureScale: 0.14,
-      falloffExponent: 1.8,
-      // Lower = gentler falloff (more land)
+      falloffExponent: 1.5,
+      // Lower = gentler falloff (land extends further out)
       beachWidth: 1,
-      riverSources: 2,
-      landThreshold: 0.3,
+      riverSources: 3,
+      // More rivers for a larger island
+      landThreshold: 0.25,
       // Lower = more land coverage
-      edgeNoiseStrength: 0.25
-      // Adds natural irregularity to coastline
+      edgeNoiseStrength: 0.15,
+      // Reduced for smoother coastline
+      continentBlend: 0.6
+      // Balanced blend (60% falloff, 40% noise for natural edges)
     };
   }
   // ========================================
@@ -8146,6 +8306,8 @@ class MapEngine {
     console.log(`⛰️  Generated elevation with radial falloff`);
     this.thresholdLandSea();
     console.log(`🌊 Separated land from sea`);
+    this.ensureSingleLandmass();
+    console.log(`🏝️  Ensured single connected landmass`);
     this.markBeaches();
     console.log(`🏖️  Marked beach tiles`);
     this.carveRiver();
@@ -8156,6 +8318,10 @@ class MapEngine {
     console.log(`🌴 Assigned biomes based on elevation and moisture`);
     this.smoothBiomes();
     console.log(`✨ Smoothed biome transitions`);
+    this.placeStrategicLocations();
+    console.log(`📍 Placed strategic locations`);
+    this.generateFactionTerritories();
+    console.log(`⚔️  Generated faction territories`);
     const stats = this.getMapStats();
     console.log(`📊 Map Stats:`, stats);
     return {
@@ -8163,7 +8329,9 @@ class MapEngine {
       hexGrid: this.hexGrid,
       seed: this.seed,
       stats,
-      config: this.config
+      config: this.config,
+      strategicLocations: this.strategicLocations,
+      territories: this.territories
     };
   }
   // ========================================
@@ -8189,7 +8357,7 @@ class MapEngine {
       }
       const landRadius = oceanBoundaryDist;
       const landDist = distFromCenter / landRadius;
-      const coastlineNoise = edgeNoise.noise2D(hex.q * 0.3, hex.r * 0.3);
+      const coastlineNoise = edgeNoise.noise2D(hex.q * 0.2, hex.r * 0.2);
       const adjustedLandDist = Math.max(0, landDist + coastlineNoise * this.config.edgeNoiseStrength);
       const falloff = Math.pow(1 - adjustedLandDist, this.config.falloffExponent);
       const noiseValue = noise.fractal(
@@ -8202,7 +8370,7 @@ class MapEngine {
         2
         // lacunarity
       );
-      const elevation = 0.5 * falloff + 0.5 * (noiseValue * 0.5 + 0.5);
+      const elevation = this.config.continentBlend * falloff + (1 - this.config.continentBlend) * (noiseValue * 0.5 + 0.5);
       this.setTile(hex.q, hex.r, {
         q: hex.q,
         r: hex.r,
@@ -8226,6 +8394,53 @@ class MapEngine {
         tile.isLand = true;
         tile.isPassable = true;
       }
+    }
+  }
+  // ========================================
+  // STEP 2.5: ENSURE SINGLE LANDMASS
+  // ========================================
+  ensureSingleLandmass() {
+    const landmasses = [];
+    const visited = /* @__PURE__ */ new Set();
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || visited.has(key)) continue;
+      const landmass = [];
+      const queue = [tile];
+      visited.add(key);
+      while (queue.length > 0) {
+        const current = queue.shift();
+        landmass.push(current);
+        const neighbors = this.hexGrid.getNeighbors(current.q, current.r);
+        for (const n of neighbors) {
+          const neighborKey = this.key(n.q, n.r);
+          if (visited.has(neighborKey)) continue;
+          const neighbor = this.getTile(n.q, n.r);
+          if (!neighbor || !neighbor.isLand) continue;
+          visited.add(neighborKey);
+          queue.push(neighbor);
+        }
+      }
+      landmasses.push(landmass);
+    }
+    if (landmasses.length === 0) {
+      console.warn("⚠️  No landmass found! Adjusting parameters...");
+      return;
+    }
+    landmasses.sort((a, b) => b.length - a.length);
+    const mainLandmass = landmasses[0];
+    console.log(`🏝️  Found ${landmasses.length} landmass(es). Largest: ${mainLandmass.length} tiles`);
+    let removedTiles = 0;
+    for (let i = 1; i < landmasses.length; i++) {
+      for (const tile of landmasses[i]) {
+        tile.terrain = "sea";
+        tile.isLand = false;
+        tile.isPassable = false;
+        tile.elevation = 0;
+        removedTiles++;
+      }
+    }
+    if (removedTiles > 0) {
+      console.log(`🌊 Removed ${removedTiles} tiles from ${landmasses.length - 1} small island(s)`);
     }
   }
   // ========================================
@@ -8364,6 +8579,70 @@ class MapEngine {
         else tile.terrain = "misty-peak";
       }
     }
+    this.ensureBiomeDiversity();
+  }
+  /**
+   * Ensure all major biomes are represented on the map
+   * This prevents unlucky RNG from creating monotonous islands
+   */
+  ensureBiomeDiversity() {
+    const requiredBiomes = [
+      "savanna",
+      "forest",
+      "rainforest",
+      "dry-hill",
+      "jungle-hill",
+      "cloud-forest",
+      "rocky-peak",
+      "misty-peak"
+    ];
+    const biomeCounts = {};
+    for (const [key, tile] of this.tiles) {
+      if (tile.isLand && tile.terrain !== "beach" && tile.terrain !== "river") {
+        biomeCounts[tile.terrain] = (biomeCounts[tile.terrain] || 0) + 1;
+      }
+    }
+    const missingBiomes = requiredBiomes.filter((b) => !biomeCounts[b] || biomeCounts[b] < 3);
+    if (missingBiomes.length > 0) {
+      console.log(`🎲 Seeding missing biomes: ${missingBiomes.join(", ")}`);
+      for (const biome of missingBiomes) {
+        const candidates = [];
+        for (const [key, tile] of this.tiles) {
+          if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "river") continue;
+          const suitability = this.getBiomeSuitability(tile, biome);
+          if (suitability > 0.5) {
+            candidates.push({ tile, suitability });
+          }
+        }
+        candidates.sort((a, b) => b.suitability - a.suitability);
+        const numToConvert = Math.min(5, candidates.length);
+        for (let i = 0; i < numToConvert; i++) {
+          candidates[i].tile.terrain = biome;
+        }
+      }
+    }
+  }
+  /**
+   * Calculate how suitable a tile is for a given biome (0-1)
+   */
+  getBiomeSuitability(tile, biome) {
+    const elev = tile.elevation;
+    const moist = tile.moisture;
+    const biomeRanges = {
+      "savanna": { elevMin: 0.35, elevMax: 0.5, moistMin: 0, moistMax: 0.3 },
+      "forest": { elevMin: 0.35, elevMax: 0.5, moistMin: 0.3, moistMax: 0.6 },
+      "rainforest": { elevMin: 0.35, elevMax: 0.5, moistMin: 0.6, moistMax: 1 },
+      "dry-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0, moistMax: 0.4 },
+      "jungle-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0.4, moistMax: 0.7 },
+      "cloud-forest": { elevMin: 0.5, elevMax: 0.7, moistMin: 0.7, moistMax: 1 },
+      "rocky-peak": { elevMin: 0.7, elevMax: 1, moistMin: 0, moistMax: 0.5 },
+      "misty-peak": { elevMin: 0.7, elevMax: 1, moistMin: 0.5, moistMax: 1 }
+    };
+    const range = biomeRanges[biome];
+    if (!range) return 0;
+    const elevScore = elev >= range.elevMin && elev <= range.elevMax ? 1 : 0;
+    const moistScore = moist >= range.moistMin && moist <= range.moistMax ? 1 : 0;
+    return (elevScore + moistScore) / 2;
   }
   // ========================================
   // STEP 7: SMOOTHING
@@ -8418,6 +8697,453 @@ class MapEngine {
     }
     stats.landPercentage = (stats.landTiles / stats.totalTiles * 100).toFixed(1);
     return stats;
+  }
+  // ========================================
+  // STRATEGIC LOCATIONS PLACEMENT
+  // ========================================
+  /**
+   * Get the quadrant of a hex coordinate (for distributing locations)
+   * Returns: 'NE', 'SE', 'SW', 'NW' based on q and r values
+   */
+  getQuadrant(q, r) {
+    if (q >= 0 && r < 0) return "NE";
+    if (q > 0 && r >= 0) return "SE";
+    if (q <= 0 && r > 0) return "SW";
+    return "NW";
+  }
+  /**
+   * Place strategic locations: villages, sacred sites, compounds, etc.
+   * These are story-critical locations that serve as faction capitals
+   * and major POIs for the narrative.
+   */
+  placeStrategicLocations() {
+    this.strategicLocations = {
+      tidalVillage: null,
+      ridgeVillage: null,
+      mercenaryCompound: null,
+      castawayBeach: null,
+      sacredSites: []
+    };
+    const minDistanceBetweenBases = Math.floor(this.config.radius * 0.6);
+    const placedLocations = [];
+    this.strategicLocations.castawayBeach = this.findCastawayStartingBeach();
+    if (this.strategicLocations.castawayBeach) {
+      placedLocations.push(this.strategicLocations.castawayBeach.tile);
+    }
+    this.strategicLocations.tidalVillage = this.findTidalVillage(placedLocations, minDistanceBetweenBases);
+    if (this.strategicLocations.tidalVillage) {
+      placedLocations.push(this.strategicLocations.tidalVillage.tile);
+    }
+    this.strategicLocations.ridgeVillage = this.findRidgeVillage(placedLocations, minDistanceBetweenBases);
+    if (this.strategicLocations.ridgeVillage) {
+      placedLocations.push(this.strategicLocations.ridgeVillage.tile);
+    }
+    this.strategicLocations.mercenaryCompound = this.findMercenaryCompound(placedLocations, minDistanceBetweenBases);
+    if (this.strategicLocations.mercenaryCompound) {
+      placedLocations.push(this.strategicLocations.mercenaryCompound.tile);
+    }
+    this.strategicLocations.sacredSites = this.placeSacredSites();
+    this.markStrategicTiles();
+    console.log("📍 Strategic Locations:", {
+      castawayBeach: this.strategicLocations.castawayBeach?.tile ? `(${this.strategicLocations.castawayBeach.tile.q}, ${this.strategicLocations.castawayBeach.tile.r})` : "none",
+      tidalVillage: this.strategicLocations.tidalVillage?.tile ? `(${this.strategicLocations.tidalVillage.tile.q}, ${this.strategicLocations.tidalVillage.tile.r})` : "none",
+      ridgeVillage: this.strategicLocations.ridgeVillage?.tile ? `(${this.strategicLocations.ridgeVillage.tile.q}, ${this.strategicLocations.ridgeVillage.tile.r})` : "none",
+      mercenaryCompound: this.strategicLocations.mercenaryCompound?.tile ? `(${this.strategicLocations.mercenaryCompound.tile.q}, ${this.strategicLocations.mercenaryCompound.tile.r})` : "none",
+      sacredSites: this.strategicLocations.sacredSites.length,
+      minDistance: minDistanceBetweenBases
+    });
+    if (this.strategicLocations.castawayBeach && this.strategicLocations.tidalVillage) {
+      const dist = this.hexGrid.distance(
+        this.strategicLocations.castawayBeach.tile.q,
+        this.strategicLocations.castawayBeach.tile.r,
+        this.strategicLocations.tidalVillage.tile.q,
+        this.strategicLocations.tidalVillage.tile.r
+      );
+      console.log(`  📏 Castaway ↔ Tidal: ${dist} tiles`);
+    }
+  }
+  /**
+   * Find suitable location for castaway starting beach
+   * Requirements: Beach, southern area, accessible to interior
+   */
+  findCastawayStartingBeach() {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== "beach") continue;
+      const southScore = Math.max(0, tile.r) / this.config.radius;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const landNeighbors = neighbors.filter((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.isLand && neighbor.terrain !== "sea";
+      }).length;
+      const accessScore = landNeighbors / 6;
+      const distFromCenter = this.hexGrid.distance(0, 0, tile.q, tile.r);
+      const edgeScore = distFromCenter / this.config.radius;
+      const totalScore = southScore * 0.4 + accessScore * 0.4 + edgeScore * 0.2;
+      candidates.push({ tile, score: totalScore });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Castaway Beach",
+      type: "starting-point",
+      tile: candidates[0].tile,
+      description: "Where your journey began. The wreckage of your arrival still litters the sand."
+    };
+  }
+  /**
+   * Find suitable location for Tidal Clan village
+   * Requirements: Coastal, near river mouth, moderate elevation, far from other bases
+   */
+  findTidalVillage(existingLocations = [], minDistance = 10) {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain === "sea") continue;
+      if (existingLocations.length > 0) {
+        const tooClose = existingLocations.some(
+          (loc) => this.hexGrid.distance(tile.q, tile.r, loc.q, loc.r) < minDistance
+        );
+        if (tooClose) continue;
+      }
+      let coastalScore = 0;
+      if (tile.terrain === "beach") {
+        coastalScore = 1;
+      } else {
+        const neighbors2 = this.hexGrid.getNeighbors(tile.q, tile.r);
+        const hasBeachNeighbor = neighbors2.some((n) => {
+          const neighbor = this.getTile(n.q, n.r);
+          return neighbor && neighbor.terrain === "beach";
+        });
+        if (hasBeachNeighbor && tile.isLand) {
+          coastalScore = 0.7;
+        } else {
+          continue;
+        }
+      }
+      let riverScore = 0;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const nearRiver = neighbors.some((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.terrain === "river";
+      });
+      if (nearRiver) riverScore = 1;
+      const elevScore = tile.elevation < 0.5 ? 1 : 0.3;
+      const terrainScore = tile.terrain === "forest" || tile.terrain === "savanna" ? 1 : 0.5;
+      let quadrantBonus = 0;
+      if (existingLocations.length > 0) {
+        const tileQuadrant = this.getQuadrant(tile.q, tile.r);
+        const differentQuadrants = existingLocations.every(
+          (loc) => this.getQuadrant(loc.q, loc.r) !== tileQuadrant
+        );
+        if (differentQuadrants) quadrantBonus = 0.5;
+      }
+      const totalScore = coastalScore * 0.4 + riverScore * 0.3 + elevScore * 0.15 + terrainScore * 0.1 + quadrantBonus * 0.05;
+      candidates.push({ tile, score: totalScore });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Tidal Village",
+      type: "native-village",
+      faction: "tidal-clan",
+      tile: candidates[0].tile,
+      description: "The Tidal Clan's seaside settlement. They are masters of fishing and sailing."
+    };
+  }
+  /**
+   * Find suitable location for Ridge Clan village
+   * Requirements: Highland/mountain area, defensible, far from other bases
+   */
+  findRidgeVillage(existingLocations = [], minDistance = 10) {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "sea") continue;
+      if (tile.elevation < 0.6) continue;
+      if (existingLocations.length > 0) {
+        const tooClose = existingLocations.some(
+          (loc) => this.hexGrid.distance(tile.q, tile.r, loc.q, loc.r) < minDistance
+        );
+        if (tooClose) continue;
+      }
+      const elevScore = tile.elevation;
+      const terrainScore = tile.terrain.includes("hill") || tile.terrain.includes("peak") ? 1 : 0.5;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const difficultNeighbors = neighbors.filter((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return !neighbor || !neighbor.isPassable || neighbor.elevation > 0.6;
+      }).length;
+      const defenseScore = difficultNeighbors / 6;
+      const interiorScore = (tile.distanceToWater || 0) / 10;
+      let quadrantBonus = 0;
+      if (existingLocations.length > 0) {
+        const tileQuadrant = this.getQuadrant(tile.q, tile.r);
+        const differentQuadrants = existingLocations.every(
+          (loc) => this.getQuadrant(loc.q, loc.r) !== tileQuadrant
+        );
+        if (differentQuadrants) quadrantBonus = 0.5;
+      }
+      const totalScore = elevScore * 0.25 + terrainScore * 0.25 + defenseScore * 0.2 + interiorScore * 0.15 + quadrantBonus * 0.15;
+      candidates.push({ tile, score: totalScore });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Ridge Village",
+      type: "native-village",
+      faction: "ridge-clan",
+      tile: candidates[0].tile,
+      description: "The Ridge Clan's highland fortress. They are fierce warriors and spiritual guides."
+    };
+  }
+  /**
+   * Find suitable location for mercenary compound
+   * Requirements: Defensible, resource-rich area, not too remote, far from other bases
+   */
+  findMercenaryCompound(existingLocations = [], minDistance = 10) {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "sea") continue;
+      if (existingLocations.length > 0) {
+        const tooClose = existingLocations.some(
+          (loc) => this.hexGrid.distance(tile.q, tile.r, loc.q, loc.r) < minDistance
+        );
+        if (tooClose) continue;
+      }
+      const idealElev = 0.55;
+      const elevScore = 1 - Math.abs(tile.elevation - idealElev);
+      const resourceBiomes = ["forest", "jungle-hill", "dry-hill"];
+      const resourceScore = resourceBiomes.includes(tile.terrain) ? 1 : 0.5;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const passableNeighbors = neighbors.filter((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.isPassable;
+      }).length;
+      const defenseScore = 1 - passableNeighbors / 6;
+      const centralityScore = 1 - this.hexGrid.distance(0, 0, tile.q, tile.r) / this.config.radius;
+      let quadrantBonus = 0;
+      if (existingLocations.length > 0) {
+        const tileQuadrant = this.getQuadrant(tile.q, tile.r);
+        const differentQuadrants = existingLocations.every(
+          (loc) => this.getQuadrant(loc.q, loc.r) !== tileQuadrant
+        );
+        if (differentQuadrants) quadrantBonus = 0.5;
+      }
+      const totalScore = elevScore * 0.25 + resourceScore * 0.25 + defenseScore * 0.15 + centralityScore * 0.15 + quadrantBonus * 0.2;
+      candidates.push({ tile, score: totalScore });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Mercenary Compound",
+      type: "hostile-base",
+      faction: "mercenaries",
+      tile: candidates[0].tile,
+      description: "A fortified compound controlled by ruthless mercenaries. Approach with caution."
+    };
+  }
+  /**
+   * Place sacred sites (3-5 locations)
+   * Requirements: High elevation, special biomes, distributed across map
+   */
+  placeSacredSites() {
+    const sacredSites = [];
+    const numSites = 3 + Math.floor(this.rng.next() * 3);
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "sea") continue;
+      let score = 0;
+      if (tile.terrain === "misty-peak" || tile.terrain === "rocky-peak") {
+        score += tile.elevation * 2;
+      }
+      if (tile.terrain === "cloud-forest") {
+        score += 1.5;
+      }
+      const remoteness = (tile.distanceToWater || 5) / 10;
+      score += remoteness * 0.5;
+      if (score > 0) {
+        candidates.push({ tile, score });
+      }
+    }
+    if (candidates.length === 0) return sacredSites;
+    candidates.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < Math.min(numSites, candidates.length); i++) {
+      const candidate = candidates[i];
+      const tooClose = sacredSites.some((site) => {
+        return this.hexGrid.distance(
+          site.tile.q,
+          site.tile.r,
+          candidate.tile.q,
+          candidate.tile.r
+        ) < 5;
+      });
+      if (!tooClose) {
+        sacredSites.push({
+          name: `Sacred Site ${String.fromCharCode(65 + sacredSites.length)}`,
+          // A, B, C...
+          type: "sacred-site",
+          tile: candidate.tile,
+          description: "A place where the Pulse flows strong. The natives hold this land as sacred."
+        });
+      }
+    }
+    return sacredSites;
+  }
+  /**
+   * Mark strategic location tiles with special properties
+   */
+  markStrategicTiles() {
+    if (this.strategicLocations.castawayBeach) {
+      const tile = this.strategicLocations.castawayBeach.tile;
+      tile.strategicLocation = this.strategicLocations.castawayBeach;
+      tile.isStrategic = true;
+    }
+    if (this.strategicLocations.tidalVillage) {
+      const tile = this.strategicLocations.tidalVillage.tile;
+      tile.strategicLocation = this.strategicLocations.tidalVillage;
+      tile.isStrategic = true;
+      tile.faction = "tidal-clan";
+    }
+    if (this.strategicLocations.ridgeVillage) {
+      const tile = this.strategicLocations.ridgeVillage.tile;
+      tile.strategicLocation = this.strategicLocations.ridgeVillage;
+      tile.isStrategic = true;
+      tile.faction = "ridge-clan";
+    }
+    if (this.strategicLocations.mercenaryCompound) {
+      const tile = this.strategicLocations.mercenaryCompound.tile;
+      tile.strategicLocation = this.strategicLocations.mercenaryCompound;
+      tile.isStrategic = true;
+      tile.faction = "mercenaries";
+    }
+    for (const site of this.strategicLocations.sacredSites) {
+      const tile = site.tile;
+      tile.strategicLocation = site;
+      tile.isStrategic = true;
+      tile.isSacred = true;
+    }
+  }
+  // ========================================
+  // FACTION TERRITORY GENERATION
+  // ========================================
+  /**
+   * Generate faction territories based on strategic locations
+   * Uses flood-fill from capital tiles with terrain preferences
+   */
+  generateFactionTerritories() {
+    this.territories = {
+      castaways: { capital: null, tiles: [], color: "#fbbf24", name: "Castaways" },
+      tidalClan: { capital: null, tiles: [], color: "#3b82f6", name: "Tidal Clan" },
+      ridgeClan: { capital: null, tiles: [], color: "#84cc16", name: "Ridge Clan" },
+      mercenaries: { capital: null, tiles: [], color: "#dc2626", name: "Mercenaries" },
+      neutral: { tiles: [] }
+    };
+    const factionConfigs = {
+      castaways: {
+        capital: this.strategicLocations.castawayBeach?.tile,
+        maxRadius: 6,
+        preferredTerrains: ["beach", "savanna", "forest"],
+        growthRate: 0.8
+      },
+      tidalClan: {
+        capital: this.strategicLocations.tidalVillage?.tile,
+        maxRadius: 12,
+        preferredTerrains: ["beach", "forest", "savanna", "river"],
+        growthRate: 1
+      },
+      ridgeClan: {
+        capital: this.strategicLocations.ridgeVillage?.tile,
+        maxRadius: 10,
+        preferredTerrains: ["jungle-hill", "cloud-forest", "dry-hill", "rocky-peak", "misty-peak"],
+        growthRate: 0.9
+      },
+      mercenaries: {
+        capital: this.strategicLocations.mercenaryCompound?.tile,
+        maxRadius: 8,
+        preferredTerrains: ["forest", "jungle-hill", "dry-hill", "savanna"],
+        growthRate: 0.7
+      }
+    };
+    const growthOrder = ["tidalClan", "ridgeClan", "mercenaries", "castaways"];
+    for (const factionKey of growthOrder) {
+      const config = factionConfigs[factionKey];
+      if (!config.capital) {
+        console.warn(`⚠️  No capital for ${factionKey}, skipping territory`);
+        continue;
+      }
+      this.territories[factionKey].capital = config.capital;
+      this.growTerritory(factionKey, config);
+    }
+    for (const [key, tile] of this.tiles) {
+      if (tile.isLand && !tile.faction && !tile.isSacred) {
+        tile.faction = "neutral";
+        this.territories.neutral.tiles.push(tile);
+      }
+    }
+    this.markFrontierTiles();
+    console.log("🗺️  Territory Distribution:", {
+      castaways: this.territories.castaways.tiles.length,
+      tidalClan: this.territories.tidalClan.tiles.length,
+      ridgeClan: this.territories.ridgeClan.tiles.length,
+      mercenaries: this.territories.mercenaries.tiles.length,
+      neutral: this.territories.neutral.tiles.length
+    });
+  }
+  /**
+   * Grow territory from capital using flood-fill with constraints
+   */
+  growTerritory(factionKey, config) {
+    const { capital, maxRadius, preferredTerrains, growthRate } = config;
+    const territory = this.territories[factionKey];
+    const queue = [{ tile: capital, distance: 0 }];
+    const visited = /* @__PURE__ */ new Set([this.key(capital.q, capital.r)]);
+    capital.faction = factionKey;
+    capital.territoryDistance = 0;
+    territory.tiles.push(capital);
+    while (queue.length > 0) {
+      const { tile: current, distance } = queue.shift();
+      if (distance >= maxRadius) continue;
+      const neighbors = this.hexGrid.getNeighbors(current.q, current.r);
+      for (const n of neighbors) {
+        const key = this.key(n.q, n.r);
+        if (visited.has(key)) continue;
+        const neighbor = this.getTile(n.q, n.r);
+        if (!neighbor || !neighbor.isLand) continue;
+        if (neighbor.faction) continue;
+        if (neighbor.isSacred) continue;
+        visited.add(key);
+        let expandChance = growthRate;
+        if (preferredTerrains.includes(neighbor.terrain)) {
+          expandChance += 0.3;
+        }
+        if (neighbor.terrain === "river") {
+          expandChance -= 0.5;
+        }
+        const distancePenalty = distance / maxRadius;
+        expandChance -= distancePenalty * 0.4;
+        if (this.rng.next() < Math.max(0.1, expandChance)) {
+          neighbor.faction = factionKey;
+          neighbor.territoryDistance = distance + 1;
+          territory.tiles.push(neighbor);
+          queue.push({ tile: neighbor, distance: distance + 1 });
+        }
+      }
+    }
+  }
+  /**
+   * Mark frontier tiles (borders between different factions)
+   */
+  markFrontierTiles() {
+    for (const [key, tile] of this.tiles) {
+      if (!tile.faction || tile.faction === "neutral") continue;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const hasDifferentFactionNeighbor = neighbors.some((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.faction && neighbor.faction !== tile.faction;
+      });
+      if (hasDifferentFactionNeighbor) {
+        tile.isFrontier = true;
+      }
+    }
   }
   // ========================================
   // FUTURE FEATURES - PLACEHOLDERS
@@ -11616,25 +12342,30 @@ function initializeGameWorld(existingSeed = null) {
   travelSystem = new TravelSystem(player, territoryManager);
   console.log(`🚶 TravelSystem initialized`);
   let startTile = null;
-  const beachTiles = Array.from(mapData.tiles.values()).filter((t) => t.terrain === "beach" && t.isLand);
-  console.log(`🔍 Found ${beachTiles.length} beach tiles`);
-  if (beachTiles.length > 0) {
-    startTile = beachTiles.reduce((closest, tile) => {
-      const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
-      const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
-      return distFromCenter < closestDist ? tile : closest;
-    });
-    console.log(`🏖️ Selected beach at (${startTile.q}, ${startTile.r})`);
+  if (mapData.strategicLocations?.castawayBeach?.tile) {
+    startTile = mapData.strategicLocations.castawayBeach.tile;
+    console.log(`🏖️ Using Castaway Beach at (${startTile.q}, ${startTile.r})`);
   } else {
-    const landTiles = Array.from(mapData.tiles.values()).filter((t) => t.isLand && t.isPassable);
-    console.log(`🔍 Fallback: Found ${landTiles.length} land tiles`);
-    if (landTiles.length > 0) {
-      startTile = landTiles.reduce((closest, tile) => {
+    const beachTiles = Array.from(mapData.tiles.values()).filter((t) => t.terrain === "beach" && t.isLand);
+    console.log(`🔍 Fallback: Found ${beachTiles.length} beach tiles`);
+    if (beachTiles.length > 0) {
+      startTile = beachTiles.reduce((closest, tile) => {
         const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
         const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
         return distFromCenter < closestDist ? tile : closest;
       });
-      console.log(`🌴 Selected ${startTile.terrain} at (${startTile.q}, ${startTile.r})`);
+      console.log(`🏖️ Fallback beach at (${startTile.q}, ${startTile.r})`);
+    } else {
+      const landTiles = Array.from(mapData.tiles.values()).filter((t) => t.isLand && t.isPassable);
+      console.log(`🔍 Last resort: Found ${landTiles.length} land tiles`);
+      if (landTiles.length > 0) {
+        startTile = landTiles.reduce((closest, tile) => {
+          const distFromCenter = Math.sqrt(tile.q * tile.q + tile.r * tile.r);
+          const closestDist = Math.sqrt(closest.q * closest.q + closest.r * closest.r);
+          return distFromCenter < closestDist ? tile : closest;
+        });
+        console.log(`🌴 Last resort land at (${startTile.q}, ${startTile.r})`);
+      }
     }
   }
   if (startTile) {

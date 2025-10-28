@@ -126,6 +126,7 @@ export class GameView {
             <button class="map-control-btn" id="zoom-out-btn" title="Zoom Out">🔍-</button>
             <button class="map-control-btn" id="center-player-btn" title="Center on Player">🎯</button>
             <button class="map-control-btn" id="toggle-legend-btn" title="Toggle Legend">🗺️</button>
+            <button class="map-control-btn" id="toggle-fog-btn" title="Toggle Fog of War (Debug)">👁️</button>
           </div>
           
           <!-- Tile Info -->
@@ -353,6 +354,18 @@ export class GameView {
       if (legend) {
         legend.style.display = legend.style.display === 'none' ? 'block' : 'none';
       }
+    });
+
+    document.getElementById('toggle-fog-btn')?.addEventListener('click', () => {
+      this.renderer.fogOfWarEnabled = !this.renderer.fogOfWarEnabled;
+      const btn = document.getElementById('toggle-fog-btn');
+      if (btn) {
+        btn.title = this.renderer.fogOfWarEnabled ? 
+          'Fog of War: ON (Click to disable)' : 
+          'Fog of War: OFF (Click to enable)';
+        btn.style.opacity = this.renderer.fogOfWarEnabled ? '1.0' : '0.5';
+      }
+      this.renderPlayerMarker();
     });
 
     // Window resize
@@ -597,6 +610,18 @@ export class GameView {
       tile.q, tile.r
     );
 
+    // Check for strategic location
+    let locationInfo = '';
+    if (tile.isStrategic && tile.strategicLocation) {
+      const loc = tile.strategicLocation;
+      locationInfo = `
+        <div style="background: rgba(139, 92, 246, 0.2); padding: 8px; border-radius: 4px; margin: 8px 0;">
+          <h5 style="margin: 0 0 4px 0; color: #a78bfa;">📍 ${loc.name}</h5>
+          <p style="margin: 0; font-size: 12px; font-style: italic;">${loc.description}</p>
+        </div>
+      `;
+    }
+
     // Check for resource node
     const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r);
     const node = nodes && nodes.length > 0 ? nodes[0] : null;
@@ -612,7 +637,9 @@ export class GameView {
         <p><strong>Distance:</strong> ${distance} tiles</p>
         <p><strong>Elevation:</strong> ${Math.round(tile.elevation * 100)}m</p>
         ${tile.isLand ? `<p><strong>Moisture:</strong> ${Math.round(tile.moisture * 100)}%</p>` : ''}
+        ${tile.faction ? `<p><strong>Controlled by:</strong> ${tile.faction}</p>` : ''}
         ${nodeInfo}
+        ${locationInfo}
       </div>
     `;
   }

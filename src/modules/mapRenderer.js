@@ -14,6 +14,9 @@ export class MapRenderer {
     this.offsetY = 0;
     this.scale = 1.0;
     
+    // Fog of War
+    this.fogOfWarEnabled = false; // Debug toggle
+    
     // Colors for different terrains
     this.terrainColors = {
       'sea': '#1e3a8a',
@@ -90,10 +93,36 @@ export class MapRenderer {
     this.ctx.fillStyle = this.adjustBrightness(baseColor, brightness);
     this.ctx.fill();
     
-    // Hex border
+    // Territory overlay (subtle tint)
+    if (tile.faction && tile.faction !== 'neutral') {
+      const territoryColors = {
+        'castaways': 'rgba(251, 191, 36, 0.15)',     // Yellow
+        'tidalClan': 'rgba(59, 130, 246, 0.15)',     // Blue
+        'ridgeClan': 'rgba(132, 204, 22, 0.15)',     // Green
+        'mercenaries': 'rgba(220, 38, 38, 0.15)'     // Red
+      };
+      
+      const territoryColor = territoryColors[tile.faction];
+      if (territoryColor) {
+        this.ctx.fillStyle = territoryColor;
+        this.ctx.fill();
+      }
+    }
+    
+    // Hex border (normal)
     this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
     this.ctx.lineWidth = 1;
     this.ctx.stroke();
+    
+    // Territory frontier borders (thicker, colored)
+    if (tile.isFrontier && tile.faction && tile.faction !== 'neutral') {
+      this.renderTerritoryBorders(tile, corners);
+    }
+    
+    // Draw strategic location markers
+    if (tile.isStrategic) {
+      this.renderStrategicMarker(tile);
+    }
     
     // Debug: show coordinates
     if (this.scale > 0.8) {
@@ -109,6 +138,141 @@ export class MapRenderer {
       this.ctx.font = '6px monospace';
       this.ctx.fillText(tile.terrain || '?', center.x, center.y + 6);
     }
+  }
+
+  /**
+   * Render territory borders between different factions
+   */
+  renderTerritoryBorders(tile, corners) {
+    const borderColors = {
+      'castaways': '#fbbf24',
+      'tidalClan': '#3b82f6',
+      'ridgeClan': '#84cc16',
+      'mercenaries': '#dc2626'
+    };
+    
+    const borderColor = borderColors[tile.faction] || '#666';
+    this.ctx.strokeStyle = borderColor;
+    this.ctx.lineWidth = 3;
+    this.ctx.lineCap = 'round';
+    
+    // Check each edge to see if it borders a different faction
+    const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+    
+    for (let i = 0; i < 6; i++) {
+      const neighbor = neighbors[i];
+      if (!neighbor) continue;
+      
+      const neighborTile = this.getTile?.(neighbor.q, neighbor.r);
+      if (!neighborTile) continue;
+      
+      // Draw border if neighbor is different faction
+      if (neighborTile.faction !== tile.faction) {
+        const startCorner = corners[i];
+        const endCorner = corners[(i + 1) % 6];
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(startCorner.x, startCorner.y);
+        this.ctx.lineTo(endCorner.x, endCorner.y);
+        this.ctx.stroke();
+      }
+    }
+  }
+
+  // Helper method to get tile (needs to be added)
+  getTile(q, r) {
+    // This will be provided by the parent that has access to tiles
+    return window.game?.mapData?.tiles?.get(`${q},${r}`);
+  }
+
+  /**
+   * Render special markers for strategic locations
+   */
+  renderStrategicMarker(tile) {
+    const center = this.hexGrid.axialToPixel(tile.q, tile.r);
+    const location = tile.strategicLocation;
+    
+    if (!location) return;
+    
+    // Different icons for different types
+    this.ctx.save();
+    this.ctx.translate(center.x, center.y);
+    
+    switch (location.type) {
+      case 'starting-point':
+        // Castaway beach - anchor/shipwreck icon
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.strokeStyle = '#92400e';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        // Draw star
+        this.ctx.fillStyle = '#92400e';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('★', 0, 0);
+        break;
+        
+      case 'native-village':
+        // Village - hut icon
+        if (location.faction === 'tidal-clan') {
+          this.ctx.fillStyle = '#3b82f6'; // Blue for coastal
+        } else {
+          this.ctx.fillStyle = '#84cc16'; // Green for mountain
+        }
+        this.ctx.strokeStyle = '#000';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        // Draw house symbol
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 14px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('⌂', 0, 0);
+        break;
+        
+      case 'hostile-base':
+        // Mercenary compound - skull/danger icon
+        this.ctx.fillStyle = '#dc2626'; // Red
+        this.ctx.strokeStyle = '#000';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        // Draw danger symbol
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 14px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('⚔', 0, 0);
+        break;
+        
+      case 'sacred-site':
+        // Sacred site - mystical symbol
+        this.ctx.fillStyle = '#a78bfa'; // Purple
+        this.ctx.strokeStyle = '#5b21b6';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        // Draw sparkle
+        this.ctx.fillStyle = '#fef3c7';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('✦', 0, 0);
+        break;
+    }
+    
+    this.ctx.restore();
   }
 
   // ========================================
@@ -157,8 +321,15 @@ export class MapRenderer {
 
   // Convert screen coordinates to hex coordinates
   screenToHex(screenX, screenY) {
-    const worldX = (screenX - this.offsetX) / this.scale;
-    const worldY = (screenY - this.offsetY) / this.scale;
+    // Get canvas bounding rect to convert viewport coords to canvas coords
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasX = screenX - rect.left;
+    const canvasY = screenY - rect.top;
+    
+    // Convert to world coordinates (accounting for camera transform)
+    const worldX = (canvasX - this.offsetX) / this.scale;
+    const worldY = (canvasY - this.offsetY) / this.scale;
+    
     return this.hexGrid.pixelToAxial(worldX, worldY);
   }
 }
