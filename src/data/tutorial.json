@@ -1,0 +1,197 @@
+{
+  "tutorial_start": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 2rem; margin-bottom: 1rem;'>🏝️ Welcome, Survivor</h2><p style='font-size: 1.1rem; line-height: 1.6;'>You've made it to shore, but the real challenge begins now. This island will test your ability to survive, adapt, and perhaps even thrive.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem;'>Let me show you the basics.</p></div>",
+    "choices": [
+      {
+        "text": "📚 Show me how to survive",
+        "next": "tutorial_resources"
+      },
+      {
+        "text": "⏭️ I know what I'm doing, skip tutorial",
+        "next": "tutorial_skip_confirm"
+      }
+    ]
+  },
+
+  "tutorial_skip_confirm": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 2rem; margin-bottom: 1rem;'>⚠️ Skip Tutorial?</h2><p style='font-size: 1.1rem; line-height: 1.6;'>Are you sure you want to skip the tutorial? You'll be thrown straight into survival mode with no guidance.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem; color: #ff6b6b;'><strong>This is not recommended for first-time players!</strong></p></div>",
+    "choices": [
+      {
+        "text": "Yes, I'm experienced - Start game!",
+        "next": "game_hub"
+      },
+      {
+        "text": "No, teach me the basics",
+        "next": "tutorial_resources"
+      }
+    ]
+  },
+
+  "tutorial_resources": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #4CAF50;'>📦 Gathering Resources</h2><p style='font-size: 1.1rem; line-height: 1.6;'>Survival depends on three key resources:</p><ul style='font-size: 1.1rem; line-height: 2; margin: 1.5rem 0; list-style-position: inside;'><li><strong style='color: #ff6b6b;'>🍖 Food</strong> - Hunt, fish, or forage to keep your hunger at bay</li><li><strong style='color: #00aaff;'>💧 Water</strong> - Find fresh water sources or collect rainwater</li><li><strong style='color: #ffb347;'>🏠 Shelter</strong> - Build a safe place to rest and protect yourself</li></ul><p style='font-size: 1.1rem; line-height: 1.6;'>Different terrain types provide different resources. Explore wisely!</p></div>",
+    "choices": [
+      {
+        "text": "What about the terrain?",
+        "next": "tutorial_terrain"
+      },
+      {
+        "text": "How do I explore the island?",
+        "next": "tutorial_exploration"
+      },
+      {
+        "text": "I understand - continue",
+        "next": "tutorial_stats"
+      }
+    ]
+  },
+
+  "tutorial_terrain": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #8BC34A;'>🗺️ Terrain Types</h2><p style='font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem;'>The island has diverse terrain, each with unique resources:</p><div style='display: grid; gap: 1rem; font-size: 1rem;'><div style='padding: 0.8rem; background: rgba(255, 235, 150, 0.2); border-left: 4px solid #ffeb96;'><strong>🏖️ Beach:</strong> Fish, shellfish, driftwood, seaweed</div><div style='padding: 0.8rem; background: rgba(76, 175, 80, 0.2); border-left: 4px solid #4CAF50;'><strong>🌴 Jungle:</strong> Fruit, vines, hardwood, medicinal plants</div><div style='padding: 0.8rem; background: rgba(139, 195, 74, 0.2); border-left: 4px solid #8BC34A;'><strong>🌿 Plains:</strong> Small game, herbs, grasses</div><div style='padding: 0.8rem; background: rgba(158, 158, 158, 0.2); border-left: 4px solid #9e9e9e;'><strong>⛰️ Rocky:</strong> Stone, minerals, cave shelter</div><div style='padding: 0.8rem; background: rgba(0, 170, 255, 0.2); border-left: 4px solid #00aaff;'><strong>💧 Freshwater:</strong> Clean water, fish, reeds</div></div></div>",
+    "choices": [
+      {
+        "text": "Got it! What else should I know?",
+        "next": "tutorial_resources"
+      },
+      {
+        "text": "Tell me about exploration",
+        "next": "tutorial_exploration"
+      }
+    ]
+  },
+
+  "tutorial_exploration": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #00aaff;'>🧭 Exploring the Island</h2><p style='font-size: 1.1rem; line-height: 1.6;'>The island is divided into <strong>hexagonal tiles</strong>. Click on any tile to:</p><ul style='font-size: 1.1rem; line-height: 2; margin: 1.5rem 0; list-style-position: inside;'><li>🚶 <strong>Move there</strong> - Costs energy based on distance</li><li>🔍 <strong>Search</strong> - Find resources and items</li><li>🏗️ <strong>Build</strong> - Create structures (once you have materials)</li><li>🎣 <strong>Interact</strong> - Hunt, fish, or gather</li></ul><p style='font-size: 1.1rem; line-height: 1.6; color: #ff6b6b;'><strong>Warning:</strong> Moving and actions cost energy. Rest when needed!</p></div>",
+    "choices": [
+      {
+        "text": "What are my character stats?",
+        "next": "tutorial_stats"
+      },
+      {
+        "text": "Tell me about resources again",
+        "next": "tutorial_resources"
+      }
+    ]
+  },
+
+  "tutorial_stats": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #ff6b6b;'>❤️ Character Stats</h2><p style='font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem;'>Keep an eye on your vital statistics:</p><div style='display: grid; gap: 1rem; font-size: 1rem;'><div style='padding: 0.8rem; background: rgba(255, 107, 107, 0.2); border-left: 4px solid #ff6b6b;'><strong>❤️ Health:</strong> Damaged by injuries, starvation, dehydration. Rest and eat to recover.</div><div style='padding: 0.8rem; background: rgba(255, 179, 71, 0.2); border-left: 4px solid #ffb347;'><strong>⚡ Energy:</strong> Used for movement and actions. Sleep to restore.</div><div style='padding: 0.8rem; background: rgba(255, 152, 0, 0.2); border-left: 4px solid #ff9800;'><strong>🍖 Hunger:</strong> Increases over time. Eat food regularly.</div><div style='padding: 0.8rem; background: rgba(0, 170, 255, 0.2); border-left: 4px solid #00aaff;'><strong>💧 Thirst:</strong> Increases faster than hunger. Drink water often!</div></div><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1.5rem; color: #ff6b6b;'><strong>If any stat reaches 0, you're in serious danger!</strong></p></div>",
+    "choices": [
+      {
+        "text": "How do I manage my inventory?",
+        "next": "tutorial_inventory"
+      },
+      {
+        "text": "What about crafting and building?",
+        "next": "tutorial_crafting"
+      }
+    ]
+  },
+
+  "tutorial_inventory": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #ffeb96;'>🎒 Inventory Management</h2><p style='font-size: 1.1rem; line-height: 1.6;'>You have a limited carrying capacity. Manage your inventory wisely:</p><ul style='font-size: 1.1rem; line-height: 2; margin: 1.5rem 0; list-style-position: inside;'><li>📦 <strong>Gather</strong> items from the environment</li><li>🔀 <strong>Drop</strong> items you don't need immediately</li><li>🏠 <strong>Store</strong> items in your shelter for safekeeping</li><li>🍴 <strong>Use</strong> consumables like food and water</li><li>🔧 <strong>Combine</strong> items to craft new tools</li></ul><p style='font-size: 1.1rem; line-height: 1.6;'>Tip: Prioritize tools and survival essentials over decorative items!</p></div>",
+    "choices": [
+      {
+        "text": "Tell me about crafting",
+        "next": "tutorial_crafting"
+      },
+      {
+        "text": "What else should I know?",
+        "next": "tutorial_final"
+      }
+    ]
+  },
+
+  "tutorial_crafting": {
+    "text": "<div style='padding: 1.5rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem; color: #8BC34A;'>🔨 Crafting & Building</h2><p style='font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem;'>Combine raw materials to create useful items and structures:</p><div style='display: grid; gap: 1rem; font-size: 1rem;'><div style='padding: 0.8rem; background: rgba(139, 195, 74, 0.2); border-left: 4px solid #8BC34A;'><strong>🔪 Tools:</strong> Axes, knives, fishing rods - make gathering easier</div><div style='padding: 0.8rem; background: rgba(255, 179, 71, 0.2); border-left: 4px solid #ffb347;'><strong>🏠 Shelter:</strong> Build and upgrade your base for protection</div><div style='padding: 0.8rem; background: rgba(255, 107, 107, 0.2); border-left: 4px solid #ff6b6b;'><strong>🔥 Fire:</strong> Cook food, purify water, stay warm</div><div style='padding: 0.8rem; background: rgba(76, 175, 80, 0.2); border-left: 4px solid #4CAF50;'><strong>🧴 Medicine:</strong> Craft remedies from plants</div></div><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1.5rem;'>Experiment with different combinations to discover new recipes!</p></div>",
+    "choices": [
+      {
+        "text": "Anything else I should know?",
+        "next": "tutorial_final"
+      },
+      {
+        "text": "Review my stats again",
+        "next": "tutorial_stats"
+      }
+    ]
+  },
+
+  "tutorial_final": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 2rem; margin-bottom: 1rem; color: #4CAF50;'>🎯 Ready to Survive?</h2><p style='font-size: 1.1rem; line-height: 1.6;'>You now know the basics:</p><ul style='font-size: 1.1rem; line-height: 2; margin: 1.5rem 0; list-style-position: inside; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;'><li>✅ Gather food, water, and shelter materials</li><li>✅ Explore different terrain types</li><li>✅ Manage your health, energy, hunger, and thirst</li><li>✅ Craft tools and build structures</li><li>✅ Keep your inventory organized</li></ul><p style='font-size: 1.2rem; line-height: 1.6; margin-top: 2rem; color: #ff6b6b;'><strong>Remember: This island is beautiful... but it's also dangerous.</strong></p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem;'>Stay alert. Stay alive. Good luck, survivor.</p></div>",
+    "choices": [
+      {
+        "text": "🚀 Begin my survival journey!",
+        "next": "game_hub"
+      },
+      {
+        "text": "📚 Review a specific topic",
+        "next": "tutorial_review_menu"
+      }
+    ]
+  },
+
+  "tutorial_review_menu": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem;'>📚 Tutorial Review</h2><p style='font-size: 1.1rem;'>What would you like to review?</p></div>",
+    "choices": [
+      {
+        "text": "📦 Resources & Terrain",
+        "next": "tutorial_resources"
+      },
+      {
+        "text": "🧭 Exploration",
+        "next": "tutorial_exploration"
+      },
+      {
+        "text": "❤️ Character Stats",
+        "next": "tutorial_stats"
+      },
+      {
+        "text": "🎒 Inventory",
+        "next": "tutorial_inventory"
+      },
+      {
+        "text": "🔨 Crafting & Building",
+        "next": "tutorial_crafting"
+      },
+      {
+        "text": "✅ I'm ready now!",
+        "next": "game_hub"
+      }
+    ]
+  },
+
+  "game_hub": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 2rem; margin-bottom: 1rem;'>🏝️ Base Camp</h2><p style='font-size: 1.1rem; line-height: 1.6;'>You stand at the edge of the beach, looking inland. Your makeshift camp is behind you - just some driftwood and palm fronds for now.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem;'>The jungle beckons to the north, full of mystery and resources.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem; color: #ff6b6b;'>What will you do?</p></div>",
+    "choices": [
+      {
+        "text": "🗺️ Open the island map",
+        "action": "openMap"
+      },
+      {
+        "text": "🎒 Check inventory",
+        "action": "openInventory"
+      },
+      {
+        "text": "📊 View character status",
+        "action": "openStatus"
+      },
+      {
+        "text": "😴 Rest and recover energy",
+        "next": "rest_scene"
+      },
+      {
+        "text": "📚 Review tutorial",
+        "next": "tutorial_review_menu"
+      }
+    ]
+  },
+
+  "rest_scene": {
+    "text": "<div style='text-align: center; padding: 2rem;'><h2 style='font-size: 1.8rem; margin-bottom: 1rem;'>😴 Resting...</h2><p style='font-size: 1.1rem; line-height: 1.6;'>You lie down on the soft sand, using your backpack as a pillow.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem;'>The gentle sound of waves lulls you into a light sleep.</p><p style='font-size: 1.1rem; line-height: 1.6; margin-top: 1rem; color: #4CAF50;'><strong>Energy restored!</strong></p><p style='font-size: 1rem; line-height: 1.6; margin-top: 1.5rem; color: #666;'>(Time passed: 2 hours)</p></div>",
+    "choices": [
+      {
+        "text": "✅ Wake up",
+        "next": "game_hub"
+      }
+    ]
+  }
+}

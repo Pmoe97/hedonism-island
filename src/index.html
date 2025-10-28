@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hedonism Island</title>
+  
+  <!-- Perchance Bridge Script - Exposes Perchance functions to our bundled module -->
+  <script>
+    // When loaded in Perchance, these functions are available in the global scope
+    // We expose them on window so our ES module can access them
+    (function() {
+      // Wait for Perchance plugins to be available
+      const waitForPerchance = setInterval(() => {
+        // Check if Perchance functions exist in global scope
+        if (typeof generateImage === 'function') {
+          window.generateImage = generateImage;
+          console.log('✅ Perchance generateImage exposed to window');
+        }
+        if (typeof generateText === 'function') {
+          window.generateText = generateText;
+          console.log('✅ Perchance generateText exposed to window');
+        }
+        if (typeof kv !== 'undefined') {
+          window.kv = kv;
+          console.log('✅ Perchance kv exposed to window');
+        }
+        
+        // Stop checking once all are found
+        if (window.generateImage && window.generateText && window.kv) {
+          clearInterval(waitForPerchance);
+          console.log('🎉 All Perchance plugins ready!');
+        }
+      }, 100);
+      
+      // Stop checking after 5 seconds if not found
+      setTimeout(() => {
+        clearInterval(waitForPerchance);
+        if (!window.generateImage) {
+          console.warn('⚠️ Perchance plugins not detected - running in standalone mode');
+        }
+      }, 5000);
+    })();
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- Global Save Menu Button (always visible) -->
+    <button id="global-menu-btn" class="global-menu-btn hidden" title="Save/Load Menu">
+      ⚙️
+    </button>
+    
+    <!-- Main Menu (shown on startup) -->
+    <div id="main-menu" class="main-menu">
+      <div class="menu-container">
+        <h1 class="game-title">HEDONISM ISLAND</h1>
+        <p class="game-subtitle">Survival • Romance • Degeneracy</p>
+        
+        <div class="menu-buttons">
+          <button class="menu-btn" id="btn-continue">Continue</button>
+          <button class="menu-btn" id="btn-new-game">New Game</button>
+          <button class="menu-btn" id="btn-load">Load Game</button>
+          <button class="menu-btn" id="btn-settings">Settings</button>
+          <button class="menu-btn" id="btn-credits">Credits</button>
+        </div>
+        
+        <p class="version-info">v1.0.0 - Alpha Build</p>
+      </div>
+    </div>
+    
+    <!-- Character Creation (shown after New Game) -->
+    <div id="character-creation"></div>
+    
+    <!-- Story Intro (shown after character creation) -->
+    <div id="story-intro" class="hidden"></div>
+    
+    <!-- Game View (shown after intro) -->
+    <div id="game-view" class="hidden"></div>
+  </div>
+  
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

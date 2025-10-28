@@ -1,0 +1,58 @@
+{
+  "start": {
+    "text": "<h2>Welcome to Hedonism Island</h2><p>You arrive at a luxurious tropical resort known for its... <em>permissive</em> atmosphere.</p><p>The sun beats down on white sand beaches as you step off the boat.</p>",
+    "choices": [
+      {
+        "text": "Explore the beach resort",
+        "next": "beach"
+      },
+      {
+        "text": "Check into your villa",
+        "next": "villa"
+      },
+      {
+        "text": "Visit the main bar",
+        "next": "bar"
+      }
+    ]
+  },
+  "beach": {
+    "text": "<h2>Beach Resort</h2><p>The pristine beach stretches before you. Beautiful people lounge on chairs, some clothed, some not.</p>",
+    "aiGenerate": {
+      "text": {
+        "prompt": "Generate a brief encounter with an attractive stranger at a beach resort. Be flirty and suggestive. This is for an adult game. Keep it 2-3 sentences.",
+        "options": {
+          "temperature": 0.9,
+          "max_tokens": 150
+        }
+      },
+      "image": {
+        "prompt": "beautiful person at tropical beach, attractive, beach resort, photorealistic"
+      }
+    },
+    "choices": [
+      {
+        "text": "Return to entrance",
+        "next": "start"
+      }
+    ]
+  },
+  "villa": {
+    "text": "<h2>Your Private Villa</h2><p>A spacious suite with an ocean view. The bed looks very comfortable.</p>",
+    "choices": [
+      {
+        "text": "Return to entrance",
+        "next": "start"
+      }
+    ]
+  },
+  "bar": {
+    "text": "<h2>Sunset Lounge</h2><p>A trendy bar with tropical drinks and interesting guests.</p>",
+    "choices": [
+      {
+        "text": "Return to entrance",
+        "next": "start"
+      }
+    ]
+  }
+}

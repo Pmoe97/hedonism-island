@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resource Gathering Test - Hedonism Island</title>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="../src/styles/playerHUD.css">
+  <link rel="stylesheet" href="../src/styles/inventoryUI.css">
+  <link rel="stylesheet" href="../src/styles/gatheringUI.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+      padding-top: 200px;
+    }
+
+    .test-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 20px;
+      color: #4dd0e1;
+      text-shadow: 0 0 20px rgba(77, 208, 225, 0.5);
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 18px;
+      color: #9e9e9e;
+      margin-bottom: 40px;
+    }
+
+    .test-panel {
+      background: rgba(26, 26, 46, 0.8);
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .test-panel h2 {
+      font-size: 22px;
+      color: #4dd0e1;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #0f3460;
+      padding-bottom: 10px;
+    }
+
+    .nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+    }
+
+    .node-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid #0f3460;
+      border-radius: 8px;
+      padding: 20px;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+
+    .node-card:hover {
+      border-color: #4dd0e1;
+      box-shadow: 0 0 20px rgba(77, 208, 225, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .node-card.depleted {
+      opacity: 0.5;
+      border-color: #e74c3c;
+    }
+
+    .node-card-header {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .node-card-icon {
+      font-size: 48px;
+    }
+
+    .node-card-info {
+      flex: 1;
+    }
+
+    .node-card-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #4dd0e1;
+      margin-bottom: 5px;
+    }
+
+    .node-card-state {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .node-card-state.full {
+      color: #2ecc71;
+    }
+
+    .node-card-state.depleted {
+      color: #e74c3c;
+    }
+
+    .node-card-state.regenerating {
+      color: #f1c40f;
+    }
+
+    .node-card-details {
+      font-size: 13px;
+      color: #9e9e9e;
+      line-height: 1.8;
+    }
+
+    .node-card-button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 15px;
+      background: linear-gradient(135deg, #4dd0e1, #26c6da);
+      border: 2px solid #4dd0e1;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .node-card-button:hover {
+      background: linear-gradient(135deg, #26c6da, #00acc1);
+      box-shadow: 0 0 15px rgba(77, 208, 225, 0.6);
+    }
+
+    .node-card-button:disabled {
+      background: #555;
+      border-color: #555;
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .test-button {
+      padding: 15px 20px;
+      background: linear-gradient(135deg, #0f3460, #1a1a2e);
+      border: 2px solid #4dd0e1;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .test-button:hover {
+      background: linear-gradient(135deg, #4dd0e1, #0f3460);
+      box-shadow: 0 0 20px rgba(77, 208, 225, 0.6);
+      transform: translateY(-2px);
+    }
+
+    .test-button.success {
+      background: linear-gradient(135deg, #2ecc71, #27ae60);
+      border-color: #2ecc71;
+    }
+
+    .instructions {
+      background: rgba(255, 215, 0, 0.1);
+      border: 2px solid #ffd700;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .instructions h3 {
+      color: #ffd700;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding-left: 20px;
+    }
+
+    .instructions li {
+      padding: 5px 0;
+    }
+
+    .instructions li:before {
+      content: "▶ ";
+      color: #ffd700;
+      margin-right: 10px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .stat-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #9e9e9e;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      color: #4dd0e1;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🌳 RESOURCE GATHERING TEST 🌳</h1>
+    <p class="subtitle">Interactive resource nodes, tool requirements, and skill progression</p>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h3>📋 How to Use</h3>
+      <ul>
+        <li>Click resource node cards to gather from them</li>
+        <li>Watch gathering progress animation</li>
+        <li>Nodes deplete after multiple uses</li>
+        <li>Depleted nodes regenerate over time</li>
+        <li>Some nodes require specific tools (equip them first!)</li>
+        <li>Gain skill XP with each successful gather</li>
+      </ul>
+    </div>
+
+    <!-- Quick Setup -->
+    <div class="test-panel">
+      <h2>⚡ Quick Setup</h2>
+      <div class="button-grid">
+        <button class="test-button success" onclick="equipStarterTools()">
+          🔧 Equip Starter Tools
+        </button>
+        <button class="test-button success" onclick="restoreEnergy()">
+          ⚡ Restore Energy
+        </button>
+        <button class="test-button" onclick="regenerateAllNodes()">
+          🔄 Regenerate All Nodes
+        </button>
+        <button class="test-button" onclick="showInventory()">
+          🎒 Open Inventory (I)
+        </button>
+      </div>
+    </div>
+
+    <!-- Resource Nodes -->
+    <div class="test-panel">
+      <h2>🌲 Resource Nodes</h2>
+      <div class="nodes-grid" id="nodes-grid">
+        <!-- Nodes will be dynamically inserted -->
+      </div>
+    </div>
+
+    <!-- Player Stats -->
+    <div class="test-panel">
+      <h2>📊 Player Stats</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Energy</div>
+          <div class="stat-value" id="stat-energy">100</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Woodcutting Skill</div>
+          <div class="stat-value" id="stat-woodcutting">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Mining Skill</div>
+          <div class="stat-value" id="stat-mining">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Fishing Skill</div>
+          <div class="stat-value" id="stat-fishing">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Items Gathered</div>
+          <div class="stat-value" id="stat-items">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total XP Gained</div>
+          <div class="stat-value" id="stat-xp">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Modules -->
+  <script type="module">
+    import { Player } from '../src/modules/player.js';
+    import { itemDB } from '../src/data/itemDatabase.js';
+    import { InventoryUI } from '../src/ui/inventoryUI.js';
+    import { PlayerHUD } from '../src/ui/playerHUD.js';
+    import { ResourceNode, ResourceNodeManager } from '../src/modules/resourceNode.js';
+    import { GatheringUI, NodeInspector } from '../src/ui/gatheringUI.js';
+
+    // Create player
+    const player = new Player({ name: 'Resource Gatherer' });
+    const hud = new PlayerHUD(player);
+    const inventoryUI = new InventoryUI(player.inventory);
+    const gatheringUI = new GatheringUI();
+    const nodeInspector = new NodeInspector();
+
+    // Create resource manager
+    const nodeManager = new ResourceNodeManager();
+
+    // Create test nodes
+    const testNodes = [
+      // Trees (require axe)
+      { type: 'tree', count: 3, resourceType: 'wood', requiredTool: 'axe', requiredSkill: 'woodcutting' },
+      // Rocks (require pickaxe)
+      { type: 'rock', count: 3, resourceType: 'stone', requiredTool: 'pickaxe', requiredSkill: 'mining' },
+      // Berry bushes (no tool)
+      { type: 'berry_bush', count: 2, resourceType: 'berries', requiredTool: null },
+      // Coconut trees (no tool)
+      { type: 'coconut_tree', count: 2, resourceType: 'coconut', requiredTool: null },
+      // Fishing spot (requires rod)
+      { type: 'fishing_spot', count: 1, resourceType: 'raw_fish', requiredTool: 'fishing_rod', requiredSkill: 'fishing' }
+    ];
+
+    let nodeId = 1;
+    testNodes.forEach(nodeType => {
+      for (let i = 0; i < nodeType.count; i++) {
+        nodeManager.createNode({
+          id: `test_node_${nodeId++}`,
+          type: nodeType.type,
+          resourceType: nodeType.resourceType,
+          position: { q: i, r: 0 },
+          requiredTool: nodeType.requiredTool,
+          requiredSkill: nodeType.requiredSkill,
+          baseYield: { min: 2, max: 4 },
+          maxUses: 3,
+          gatherTime: 3000,
+          energyCost: 5,
+          quality: i === 0 ? 'rich' : 'normal'
+        });
+      }
+    });
+
+    // Add fishing rod to special nodes
+    const fishingSpot = nodeManager.getNodesByType('fishing_spot')[0];
+    if (fishingSpot) {
+      fishingSpot.sprite = '🎣';
+      fishingSpot.depletedSprite = '💤';
+      fishingSpot.gatherTime = 5000;
+      fishingSpot.energyCost = 3;
+    }
+
+    // Stats tracking
+    let totalItemsGathered = 0;
+    let totalXPGained = 0;
+
+    // Game loop for node regeneration
+    let lastUpdate = Date.now();
+    function gameLoop() {
+      const now = Date.now();
+      const deltaTime = (now - lastUpdate) * 60; // 60x speed for testing
+      lastUpdate = now;
+
+      player.update(deltaTime);
+      nodeManager.update(deltaTime);
+      updateUI();
+
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+
+    // Render nodes
+    function renderNodes() {
+      const grid = document.getElementById('nodes-grid');
+      grid.innerHTML = '';
+
+      nodeManager.nodes.forEach(node => {
+        const card = createNodeCard(node);
+        grid.appendChild(card);
+      });
+    }
+
+    function createNodeCard(node) {
+      const card = document.createElement('div');
+      card.className = `node-card ${node.state}`;
+
+      const canGather = node.canGather(player);
+      const info = node.getInfo();
+
+      card.innerHTML = `
+        <div class="node-card-header">
+          <div class="node-card-icon">${node.getSprite()}</div>
+          <div class="node-card-info">
+            <div class="node-card-name">${node.getName()}</div>
+            <div class="node-card-state ${node.state}">${node.state}</div>
+          </div>
+        </div>
+        <div class="node-card-details">
+          <div>🔧 Tool: ${info.requiredTool}</div>
+          <div>⚡ Energy: ${info.energyCost}</div>
+          <div>⏱️ Time: ${info.gatherTime}</div>
+          <div>📦 Uses: ${info.usesRemaining}</div>
+          <div>✨ Quality: ${node.quality}</div>
+          ${node.isRegenerating ? `<div>🔄 Regen: ${info.regenerationProgress}</div>` : ''}
+        </div>
+        <button class="node-card-button" ${!canGather.success ? 'disabled' : ''}>
+          ${canGather.success ? 'Gather' : canGather.reason}
+        </button>
+      `;
+
+      const button = card.querySelector('.node-card-button');
+      if (canGather.success) {
+        button.onclick = () => gatherFromNode(node);
+      }
+
+      return card;
+    }
+
+    function gatherFromNode(node) {
+      gatheringUI.startGathering(node, player, () => {
+        const result = node.gather(player);
+        gatheringUI.showResult(result);
+
+        if (result.success) {
+          // Add items to inventory
+          result.items.forEach(item => {
+            player.inventory.addItem(item);
+          });
+
+          totalItemsGathered += result.items.length;
+          totalXPGained += result.xpGained || 0;
+
+          console.log(`Gathered: ${result.items.map(i => i.name).join(', ')}`);
+          if (result.xpGained) {
+            console.log(`+${result.xpGained} ${node.requiredSkill} XP`);
+          }
+        }
+
+        renderNodes();
+        updateStats();
+      });
+    }
+
+    function updateUI() {
+      renderNodes();
+      updateStats();
+    }
+
+    function updateStats() {
+      document.getElementById('stat-energy').textContent = Math.round(player.stats.energy);
+      document.getElementById('stat-woodcutting').textContent = Math.round(player.skills.woodcutting);
+      document.getElementById('stat-mining').textContent = Math.round(player.skills.mining);
+      document.getElementById('stat-fishing').textContent = Math.round(player.skills.fishing);
+      document.getElementById('stat-items').textContent = totalItemsGathered;
+      document.getElementById('stat-xp').textContent = totalXPGained;
+    }
+
+    // Global functions
+    window.equipStarterTools = function() {
+      player.inventory.addItem(itemDB.get('stone_axe'));
+      player.inventory.addItem(itemDB.get('stone_pickaxe'));
+      player.inventory.addItem(itemDB.get('fishing_rod'));
+      player.inventory.addItem(itemDB.get('knife'));
+
+      player.inventory.equip(itemDB.get('stone_axe'), 'weapon');
+      player.inventory.equip(itemDB.get('stone_pickaxe'), 'tool');
+
+      console.log('✅ Equipped starter tools');
+      renderNodes();
+    };
+
+    window.restoreEnergy = function() {
+      player.stats.energy = 100;
+      console.log('✅ Energy restored');
+    };
+
+    window.regenerateAllNodes = function() {
+      nodeManager.nodes.forEach(node => {
+        if (node.state === 'depleted') {
+          node.regenerateNode();
+        }
+      });
+      console.log('✅ All nodes regenerated');
+      renderNodes();
+    };
+
+    window.showInventory = function() {
+      inventoryUI.toggle();
+    };
+
+    // Make available globally
+    window.player = player;
+    window.nodeManager = nodeManager;
+    window.gatheringUI = gatheringUI;
+
+    // Initial render
+    renderNodes();
+    updateStats();
+
+    console.log('✅ Resource gathering system loaded!');
+    console.log('💡 Click "Equip Starter Tools" first, then gather resources');
+  </script>
+</body>
+</html>

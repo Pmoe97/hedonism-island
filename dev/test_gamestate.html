@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GameState Integration Test - Hedonism Island</title>
+  
+  <!-- Load all CSS -->
+  <link rel="stylesheet" href="../src/styles/inventoryUI.css">
+  <link rel="stylesheet" href="../src/styles/playerHUD.css">
+  <link rel="stylesheet" href="../src/styles/gatheringUI.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .test-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .test-header {
+      background: rgba(26, 26, 46, 0.8);
+      border: 2px solid #4dd0e1;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .test-header h1 {
+      color: #4dd0e1;
+      margin-bottom: 10px;
+    }
+
+    .test-header p {
+      color: #b0b0b0;
+      margin-bottom: 5px;
+    }
+
+    .control-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .control-section {
+      background: rgba(26, 26, 46, 0.8);
+      border: 1px solid #4dd0e1;
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .control-section h3 {
+      color: #4dd0e1;
+      margin-bottom: 15px;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    button.success {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+
+    button.warning {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+
+    .input-group {
+      margin-bottom: 10px;
+    }
+
+    .input-group label {
+      display: block;
+      color: #b0b0b0;
+      margin-bottom: 5px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #4dd0e1;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      margin: 10px 0;
+    }
+
+    .info-display {
+      background: rgba(0, 0, 0, 0.3);
+      border-left: 3px solid #4dd0e1;
+      padding: 10px;
+      margin-top: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .event-log {
+      background: rgba(26, 26, 46, 0.8);
+      border: 1px solid #4dd0e1;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .event-log h3 {
+      color: #4dd0e1;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .log-entry {
+      padding: 5px 10px;
+      margin: 5px 0;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border-left: 3px solid #4dd0e1;
+    }
+
+    .log-entry.success { border-left-color: #4ade80; }
+    .log-entry.error { border-left-color: #f87171; }
+    .log-entry.warning { border-left-color: #fbbf24; }
+    .log-entry.info { border-left-color: #60a5fa; }
+
+    .save-list {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      padding: 10px;
+      margin-top: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .save-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      margin: 5px 0;
+      background: rgba(77, 208, 225, 0.1);
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .save-item:hover {
+      background: rgba(77, 208, 225, 0.2);
+    }
+
+    .save-info {
+      flex: 1;
+    }
+
+    .save-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .save-actions button {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .resource-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #4dd0e1;
+      border-radius: 6px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .resource-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(77, 208, 225, 0.3);
+      border-color: #4dd0e1;
+    }
+
+    .resource-card h4 {
+      color: #4dd0e1;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .resource-card p {
+      font-size: 11px;
+      color: #b0b0b0;
+      margin: 4px 0;
+    }
+
+    .resource-card .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    .resource-card .status.full { background: #4ade80; color: #000; }
+    .resource-card .status.depleted { background: #f87171; color: #000; }
+    .resource-card .status.regenerating { background: #fbbf24; color: #000; }
+
+    .time-display {
+      font-size: 18px;
+      font-weight: 600;
+      color: #4dd0e1;
+      text-align: center;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <!-- Header -->
+    <div class="test-header">
+      <h1>🏝️ GameState Integration Test</h1>
+      <p>Complete test environment for Player, Inventory, Resource Gathering, and Save/Load systems</p>
+      <p>Version: <strong id="version">Loading...</strong></p>
+    </div>
+
+    <!-- Control Panels -->
+    <div class="control-panel">
+      <!-- Game Control -->
+      <div class="control-section">
+        <h3>⚙️ Game Control</h3>
+        <div class="button-group">
+          <button onclick="initGame()" class="success">Initialize Game</button>
+          <button onclick="togglePause()">Pause/Resume</button>
+          <button onclick="resetGame()" class="danger">Reset Game</button>
+        </div>
+        <div class="time-display" id="timeDisplay">Day 0, 0:00 AM</div>
+        <div class="input-group">
+          <label>Time Scale</label>
+          <input type="range" id="timeScale" min="1" max="240" value="60" oninput="updateTimeScale(this.value)">
+          <span id="timeScaleValue">60 min/sec</span>
+        </div>
+        <div class="info-display" id="gameInfo">Game not initialized</div>
+      </div>
+
+      <!-- Player Control -->
+      <div class="control-section">
+        <h3>👤 Player Actions</h3>
+        <div class="button-group">
+          <button onclick="toggleHUD()">Toggle HUD</button>
+          <button onclick="toggleInventory()">Toggle Inventory</button>
+          <button onclick="playerRest()">Rest (Restore Energy)</button>
+        </div>
+        <div class="input-group">
+          <label>Quick Add Item</label>
+          <select id="quickAddItem">
+            <option value="coconut">Coconut</option>
+            <option value="berries">Wild Berries</option>
+            <option value="raw_fish">Raw Fish</option>
+            <option value="fresh_water">Fresh Water</option>
+            <option value="bandage">Bandage</option>
+            <option value="wood">Wood</option>
+            <option value="stone">Stone</option>
+            <option value="fiber">Plant Fiber</option>
+            <option value="stone_axe">Stone Axe</option>
+            <option value="stone_pickaxe">Stone Pickaxe</option>
+            <option value="crude_knife">Crude Knife</option>
+          </select>
+          <button onclick="quickAddItem()" class="success" style="margin-top: 5px; width: 100%;">Add Item</button>
+        </div>
+        <div class="input-group">
+          <label>Consume Item</label>
+          <select id="consumeItem">
+            <option value="">-- Select Item --</option>
+          </select>
+          <button onclick="consumeItem()" style="margin-top: 5px; width: 100%;">Consume</button>
+        </div>
+      </div>
+
+      <!-- Save/Load Control -->
+      <div class="control-section">
+        <h3>💾 Save/Load</h3>
+        <div class="input-group">
+          <label>Save Slot Name</label>
+          <input type="text" id="saveSlotName" placeholder="my_save" value="test_save">
+        </div>
+        <div class="button-group">
+          <button onclick="saveGame()" class="success">Save Game</button>
+          <button onclick="exportSave()" class="warning">Export JSON</button>
+          <button onclick="refreshSaveList()">Refresh List</button>
+        </div>
+        <div class="save-list" id="saveList">
+          <p style="color: #b0b0b0; font-size: 12px;">No saves found</p>
+        </div>
+      </div>
+
+      <!-- Resource Gathering -->
+      <div class="control-section">
+        <h3>🌲 Resource Gathering</h3>
+        <div class="button-group">
+          <button onclick="generateNodes()">Generate Nodes</button>
+          <button onclick="showNodeInspector()">Show Inspector</button>
+          <button onclick="refreshNodeList()">Refresh</button>
+        </div>
+        <div class="resource-grid" id="nodeGrid">
+          <p style="color: #b0b0b0; font-size: 12px; padding: 10px;">No resource nodes nearby</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="event-log">
+      <h3>📋 Event Log</h3>
+      <div id="eventLog"></div>
+    </div>
+  </div>
+
+  <!-- Load all modules -->
+  <script type="module">
+    import { GameState } from '../src/modules/gameState.js';
+    import { InventoryUI } from '../src/ui/inventoryUI.js';
+    import { PlayerHUD } from '../src/ui/playerHUD.js';
+    import { GatheringUI, NodeInspector } from '../src/ui/gatheringUI.js';
+    import { itemDB } from '../src/data/itemDatabase.js';
+
+    // Global references
+    window.gameState = null;
+    window.inventoryUI = null;
+    window.playerHUD = null;
+    window.gatheringUI = null;
+    window.nodeInspector = null;
+
+    // Event log
+    const eventLog = [];
+    const maxLogEntries = 100;
+
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      eventLog.unshift({ message, type, timestamp });
+      
+      if (eventLog.length > maxLogEntries) {
+        eventLog.pop();
+      }
+
+      updateEventLog();
+    }
+
+    function updateEventLog() {
+      const logDiv = document.getElementById('eventLog');
+      logDiv.innerHTML = eventLog.map(entry => 
+        `<div class="log-entry ${entry.type}">[${entry.timestamp}] ${entry.message}</div>`
+      ).join('');
+    }
+
+    // Initialize game
+    window.initGame = function() {
+      addLog('Initializing GameState...', 'info');
+      
+      try {
+        // Create GameState
+        window.gameState = new GameState();
+        
+        // Initialize with config
+        const result = window.gameState.init({
+          playerName: 'Test Player',
+          playerGender: 'neutral',
+          spawnPosition: { q: 0, r: 0 }
+        });
+
+        addLog(`GameState initialized: ${result.player.name} (v${result.version})`, 'success');
+        
+        // Create UIs
+        window.inventoryUI = new InventoryUI(window.gameState.player.inventory);
+        window.playerHUD = new PlayerHUD(window.gameState.player);
+        window.gatheringUI = new GatheringUI(window.gameState.player);
+        window.nodeInspector = new NodeInspector();
+
+        // Register UIs with GameState
+        window.gameState.registerUI('inventoryUI', window.inventoryUI);
+        window.gameState.registerUI('playerHUD', window.playerHUD);
+        window.gameState.registerUI('gatheringUI', window.gatheringUI);
+        window.gameState.registerUI('nodeInspector', window.nodeInspector);
+
+        // Start game loop
+        window.gameState.startGameLoop();
+        
+        // Subscribe to events
+        window.gameState.on('tick', (data) => {
+          document.getElementById('timeDisplay').textContent = window.gameState.getTimeString();
+          updateGameInfo();
+        });
+
+        window.gameState.on('inventoryUpdated', () => {
+          updateConsumableList();
+          addLog('Inventory updated', 'info');
+        });
+
+        window.gameState.on('itemConsumed', (data) => {
+          addLog(`Consumed: ${data.itemId}`, 'success');
+        });
+
+        window.gameState.on('gatheringComplete', (data) => {
+          addLog(`Gathered: ${data.items.map(i => `${i.quantity}x ${i.item.name}`).join(', ')}`, 'success');
+        });
+
+        window.gameState.on('gameSaved', (data) => {
+          addLog(`Game saved: ${data.slotName}`, 'success');
+          refreshSaveList();
+        });
+
+        window.gameState.on('gameLoaded', (data) => {
+          addLog(`Game loaded: ${data.slotName}`, 'success');
+          updateGameInfo();
+        });
+
+        // Update displays
+        document.getElementById('version').textContent = `v${window.gameState.version}`;
+        updateGameInfo();
+        updateConsumableList();
+        refreshNodeList();
+
+        addLog('All systems initialized successfully!', 'success');
+      } catch (error) {
+        addLog(`Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Update game info display
+    function updateGameInfo() {
+      if (!window.gameState) return;
+      
+      const player = window.gameState.player;
+      const info = `
+Status: ${window.gameState.isPaused ? '⏸️ PAUSED' : '▶️ RUNNING'}
+Player: ${player.name}
+Health: ${player.stats.health.current.toFixed(0)}/${player.stats.health.max}
+Hunger: ${player.stats.hunger.current.toFixed(0)}%
+Thirst: ${player.stats.thirst.current.toFixed(0)}%
+Energy: ${player.stats.energy.current.toFixed(0)}%
+Sanity: ${player.stats.sanity.current.toFixed(0)}%
+Position: (${player.position.q}, ${player.position.r})
+Inventory: ${player.inventory.slots.filter(s => !s.isEmpty()).length}/20 slots used
+      `.trim();
+      
+      document.getElementById('gameInfo').textContent = info;
+    }
+
+    // Update consumable item list
+    function updateConsumableList() {
+      if (!window.gameState) return;
+      
+      const select = document.getElementById('consumeItem');
+      const consumables = window.gameState.player.inventory.slots
+        .filter(slot => !slot.isEmpty() && slot.item.consumable)
+        .map(slot => slot.item);
+      
+      select.innerHTML = '<option value="">-- Select Item --</option>' + 
+        consumables.map(item => 
+          `<option value="${item.id}">${item.name}</option>`
+        ).join('');
+    }
+
+    // Game control functions
+    window.togglePause = function() {
+      if (!window.gameState) return;
+      window.gameState.togglePause();
+      addLog(window.gameState.isPaused ? 'Game paused' : 'Game resumed', 'warning');
+      updateGameInfo();
+    };
+
+    window.updateTimeScale = function(value) {
+      if (!window.gameState) return;
+      window.gameState.setTimeScale(parseInt(value));
+      document.getElementById('timeScaleValue').textContent = `${value} min/sec`;
+      addLog(`Time scale: ${value} min/sec`, 'info');
+    };
+
+    window.resetGame = function() {
+      if (!confirm('Reset game? This will clear current session (saves preserved).')) return;
+      
+      if (window.gameState) {
+        window.gameState.stopGameLoop();
+      }
+      
+      window.gameState = null;
+      window.inventoryUI = null;
+      window.playerHUD = null;
+      window.gatheringUI = null;
+      window.nodeInspector = null;
+      
+      document.getElementById('gameInfo').textContent = 'Game not initialized';
+      document.getElementById('timeDisplay').textContent = 'Day 0, 0:00 AM';
+      
+      addLog('Game reset', 'warning');
+    };
+
+    // Player functions
+    window.toggleHUD = function() {
+      if (!window.playerHUD) return;
+      window.playerHUD.toggle();
+      addLog('HUD toggled', 'info');
+    };
+
+    window.toggleInventory = function() {
+      if (!window.inventoryUI) return;
+      window.inventoryUI.toggle();
+      addLog('Inventory toggled', 'info');
+    };
+
+    window.playerRest = function() {
+      if (!window.gameState) return;
+      window.gameState.player.rest(30); // 30 minutes rest
+      addLog('Player rested (30 min)', 'success');
+    };
+
+    window.quickAddItem = function() {
+      if (!window.gameState) return;
+      
+      const itemId = document.getElementById('quickAddItem').value;
+      const added = window.gameState.addItem(itemId, 1);
+      
+      if (added) {
+        addLog(`Added: ${itemId}`, 'success');
+      } else {
+        addLog(`Failed to add: ${itemId}`, 'error');
+      }
+    };
+
+    window.consumeItem = function() {
+      if (!window.gameState) return;
+      
+      const itemId = document.getElementById('consumeItem').value;
+      if (!itemId) return;
+      
+      const result = window.gameState.consumeItem(itemId);
+      if (result.success) {
+        addLog(`Consumed: ${itemId}`, 'success');
+      } else {
+        addLog(`Failed: ${result.message}`, 'error');
+      }
+    };
+
+    // Save/Load functions
+    window.saveGame = function() {
+      if (!window.gameState) return;
+      
+      const slotName = document.getElementById('saveSlotName').value || 'test_save';
+      window.gameState.save(slotName);
+    };
+
+    window.loadGame = function(slotName) {
+      if (!window.gameState) {
+        addLog('Initialize game first!', 'error');
+        return;
+      }
+      
+      const success = window.gameState.load(slotName);
+      if (success) {
+        updateGameInfo();
+        updateConsumableList();
+        refreshNodeList();
+      }
+    };
+
+    window.exportSave = function() {
+      if (!window.gameState) return;
+      window.gameState.exportSave();
+      addLog('Save exported to file', 'success');
+    };
+
+    window.deleteSaveSlot = function(slotName) {
+      if (!confirm(`Delete save: ${slotName}?`)) return;
+      window.gameState.deleteSave(slotName);
+      addLog(`Deleted save: ${slotName}`, 'warning');
+      refreshSaveList();
+    };
+
+    window.refreshSaveList = function() {
+      if (!window.gameState) {
+        document.getElementById('saveList').innerHTML = 
+          '<p style="color: #b0b0b0; font-size: 12px;">Initialize game first</p>';
+        return;
+      }
+      
+      const saves = window.gameState.listSaves();
+      
+      if (saves.length === 0) {
+        document.getElementById('saveList').innerHTML = 
+          '<p style="color: #b0b0b0; font-size: 12px;">No saves found</p>';
+        return;
+      }
+      
+      document.getElementById('saveList').innerHTML = saves.map(save => `
+        <div class="save-item">
+          <div class="save-info">
+            <strong>${save.slotName}</strong> (v${save.version})<br>
+            Day ${save.day} - ${save.playerName} - HP: ${save.health.toFixed(0)}<br>
+            <small>${new Date(save.saveDate).toLocaleString()}</small>
+          </div>
+          <div class="save-actions">
+            <button onclick="loadGame('${save.slotName}')" class="success">Load</button>
+            <button onclick="deleteSaveSlot('${save.slotName}')" class="danger">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    };
+
+    // Resource gathering functions
+    window.generateNodes = function() {
+      if (!window.gameState) return;
+      
+      window.gameState.resourceManager.generateStarterNodes(window.gameState.player.position);
+      addLog('Generated resource nodes', 'success');
+      refreshNodeList();
+    };
+
+    window.showNodeInspector = function() {
+      if (!window.nodeInspector) return;
+      
+      const nodes = window.gameState.resourceManager.getNodesAt(
+        window.gameState.player.position.q,
+        window.gameState.player.position.r
+      );
+      
+      if (nodes.length > 0) {
+        window.nodeInspector.show(nodes[0], window.gameState.player);
+        addLog('Showing node inspector', 'info');
+      } else {
+        addLog('No nodes at player position', 'warning');
+      }
+    };
+
+    window.gatherFromNode = function(nodeId) {
+      if (!window.gameState) return;
+      
+      const node = window.gameState.resourceManager.getNode(nodeId);
+      if (!node) return;
+      
+      addLog(`Gathering from ${node.type}...`, 'info');
+      
+      window.gameState.gatherFromNode(nodeId, (progress) => {
+        // Progress callback
+        if (window.gatheringUI) {
+          window.gatheringUI.updateProgress(progress, node);
+        }
+      });
+    };
+
+    window.refreshNodeList = function() {
+      if (!window.gameState) return;
+      
+      const nodes = window.gameState.resourceManager.getNodesAt(
+        window.gameState.player.position.q,
+        window.gameState.player.position.r
+      );
+      
+      if (nodes.length === 0) {
+        document.getElementById('nodeGrid').innerHTML = 
+          '<p style="color: #b0b0b0; font-size: 12px; padding: 10px;">No resource nodes at current position</p>';
+        return;
+      }
+      
+      document.getElementById('nodeGrid').innerHTML = nodes.map(node => `
+        <div class="resource-card" onclick="gatherFromNode('${node.id}')">
+          <h4>${node.type}</h4>
+          <p>Quality: ${node.quality}</p>
+          <p>Uses: ${node.currentUses}/${node.maxUses}</p>
+          <p>Tool: ${node.toolRequired || 'None'}</p>
+          <p>Energy: ${node.energyCost}</p>
+          <span class="status ${node.state}">${node.state.toUpperCase()}</span>
+        </div>
+      `).join('');
+    };
+
+    // Add some initial logs
+    addLog('Test page loaded - Click "Initialize Game" to start', 'info');
+    addLog('Use controls to test Player, Inventory, Resource Gathering, and Save/Load', 'info');
+  </script>
+</body>
+</html>

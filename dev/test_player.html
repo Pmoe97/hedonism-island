@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player System Test - Hedonism Island</title>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="../src/styles/playerHUD.css">
+  <link rel="stylesheet" href="../src/styles/inventoryUI.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+      padding-top: 200px; /* Space for HUD */
+    }
+
+    .test-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 20px;
+      color: #4dd0e1;
+      text-shadow: 0 0 20px rgba(77, 208, 225, 0.5);
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 18px;
+      color: #9e9e9e;
+      margin-bottom: 40px;
+    }
+
+    .test-panel {
+      background: rgba(26, 26, 46, 0.8);
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .test-panel h2 {
+      font-size: 22px;
+      color: #4dd0e1;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #0f3460;
+      padding-bottom: 10px;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .test-button {
+      padding: 15px 20px;
+      background: linear-gradient(135deg, #0f3460, #1a1a2e);
+      border: 2px solid #4dd0e1;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: left;
+    }
+
+    .test-button:hover {
+      background: linear-gradient(135deg, #4dd0e1, #0f3460);
+      box-shadow: 0 0 20px rgba(77, 208, 225, 0.6);
+      transform: translateY(-2px);
+    }
+
+    .test-button.danger {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      border-color: #e74c3c;
+    }
+
+    .test-button.success {
+      background: linear-gradient(135deg, #2ecc71, #27ae60);
+      border-color: #2ecc71;
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+
+    .control-group {
+      flex: 1;
+    }
+
+    .control-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #9e9e9e;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      background: #4dd0e1;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(77, 208, 225, 0.5);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #26c6da;
+      box-shadow: 0 0 20px rgba(77, 208, 225, 0.8);
+    }
+
+    .slider-value {
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: #4dd0e1;
+      margin-top: 5px;
+    }
+
+    .instructions {
+      background: rgba(255, 215, 0, 0.1);
+      border: 2px solid #ffd700;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .instructions h3 {
+      color: #ffd700;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding-left: 20px;
+    }
+
+    .instructions li {
+      padding: 5px 0;
+    }
+
+    .instructions li:before {
+      content: "▶ ";
+      color: #ffd700;
+      margin-right: 10px;
+    }
+
+    .log-panel {
+      max-height: 250px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .log-entry {
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(77, 208, 225, 0.1);
+    }
+
+    .log-success { color: #2ecc71; }
+    .log-error { color: #e74c3c; }
+    .log-info { color: #4dd0e1; }
+    .log-warning { color: #f39c12; }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🏝️ PLAYER SYSTEM TEST 🏝️</h1>
+    <p class="subtitle">Advanced character stats, status effects, and survival mechanics</p>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h3>📋 Features to Test</h3>
+      <ul>
+        <li>Click HUD in top-left to expand/collapse detailed stats</li>
+        <li>Watch stats degrade over time (hunger, thirst, energy)</li>
+        <li>Add status effects and see them tick down</li>
+        <li>Equip items for bonuses (visible in expanded HUD)</li>
+        <li>Press I to open inventory and consume items</li>
+        <li>Test critical states (unconscious, death)</li>
+      </ul>
+    </div>
+
+    <!-- Time Control -->
+    <div class="test-panel">
+      <h2>⏰ Time Simulation</h2>
+      <div class="controls-row">
+        <div class="control-group">
+          <div class="control-label">Time Speed</div>
+          <input type="range" id="time-speed" min="1" max="3600" value="60" step="1">
+          <div class="slider-value"><span id="time-speed-value">60</span>x (1 min/sec)</div>
+        </div>
+        <button class="test-button" onclick="toggleTime()">
+          <span id="time-toggle">⏸️ Pause Time</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Stat Manipulation -->
+    <div class="test-panel">
+      <h2>🎛️ Adjust Stats</h2>
+      <div class="controls-row">
+        <div class="control-group">
+          <div class="control-label">Health</div>
+          <input type="range" id="health-slider" min="0" max="100" value="100">
+          <div class="slider-value"><span id="health-value">100</span></div>
+        </div>
+        <div class="control-group">
+          <div class="control-label">Hunger</div>
+          <input type="range" id="hunger-slider" min="0" max="100" value="100">
+          <div class="slider-value"><span id="hunger-value">100</span></div>
+        </div>
+        <div class="control-group">
+          <div class="control-label">Thirst</div>
+          <input type="range" id="thirst-slider" min="0" max="100" value="100">
+          <div class="slider-value"><span id="thirst-value">100</span></div>
+        </div>
+        <div class="control-group">
+          <div class="control-label">Energy</div>
+          <input type="range" id="energy-slider" min="0" max="100" value="100">
+          <div class="slider-value"><span id="energy-value">100</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="test-panel">
+      <h2>⚡ Quick Actions</h2>
+      <div class="button-grid">
+        <button class="test-button success" onclick="eatFood()">
+          🍖 Eat Cooked Meat
+        </button>
+        <button class="test-button success" onclick="drinkWater()">
+          💧 Drink Water
+        </button>
+        <button class="test-button success" onclick="rest()">
+          😴 Rest (4 hours)
+        </button>
+        <button class="test-button success" onclick="heal()">
+          🩹 Use Bandage
+        </button>
+        <button class="test-button" onclick="move()">
+          🏃 Move (costs energy)
+        </button>
+        <button class="test-button" onclick="addEquipment()">
+          ⚔️ Equip Starter Gear
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Effects -->
+    <div class="test-panel">
+      <h2>✨ Status Effects</h2>
+      <div class="button-grid">
+        <button class="test-button success" onclick="addEffect('wellRested')">
+          😊 Well Rested (buff)
+        </button>
+        <button class="test-button success" onclick="addEffect('wellFed')">
+          🍽️ Well Fed (buff)
+        </button>
+        <button class="test-button danger" onclick="addEffect('bleeding')">
+          🩸 Bleeding (debuff)
+        </button>
+        <button class="test-button danger" onclick="addEffect('poisoned')">
+          ☠️ Poisoned (debuff)
+        </button>
+        <button class="test-button danger" onclick="addEffect('dehydrated')">
+          💀 Dehydrated (debuff)
+        </button>
+        <button class="test-button" onclick="clearEffects()">
+          🧹 Clear All Effects
+        </button>
+      </div>
+    </div>
+
+    <!-- Scenarios -->
+    <div class="test-panel">
+      <h2>🎭 Test Scenarios</h2>
+      <div class="button-grid">
+        <button class="test-button" onclick="scenario('healthy')">
+          😊 Healthy Survivor
+        </button>
+        <button class="test-button" onclick="scenario('starving')">
+          😰 Starving
+        </button>
+        <button class="test-button" onclick="scenario('exhausted')">
+          😴 Exhausted
+        </button>
+        <button class="test-button" onclick="scenario('critical')">
+          💀 Critical Condition
+        </button>
+        <button class="test-button" onclick="scenario('thriving')">
+          💪 Thriving
+        </button>
+        <button class="test-button danger" onclick="scenario('death')">
+          ☠️ Near Death
+        </button>
+      </div>
+    </div>
+
+    <!-- Action Log -->
+    <div class="test-panel">
+      <h2>📝 Action Log</h2>
+      <div class="log-panel" id="log-panel">
+        <div class="log-entry log-info">Player system initialized...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Modules -->
+  <script type="module">
+    import { Player } from '../src/modules/player.js';
+    import { itemDB } from '../src/data/itemDatabase.js';
+    import { InventoryUI } from '../src/ui/inventoryUI.js';
+    import { PlayerHUD } from '../src/ui/playerHUD.js';
+
+    // Create player
+    const player = new Player({ name: 'Test Survivor' });
+    const hud = new PlayerHUD(player);
+    const inventoryUI = new InventoryUI(player.inventory);
+
+    // Add some starting items
+    player.inventory.addItem(itemDB.get('coconut'));
+    player.inventory.addItem(itemDB.get('water_bottle'));
+    player.inventory.addItem(itemDB.get('bandage'));
+
+    // Time simulation
+    let timeRunning = true;
+    let timeSpeed = 60; // 60x real time (1 min per sec)
+    let lastUpdate = Date.now();
+
+    function gameLoop() {
+      if (timeRunning) {
+        const now = Date.now();
+        const deltaTime = (now - lastUpdate) * timeSpeed;
+        lastUpdate = now;
+
+        player.update(deltaTime);
+      } else {
+        lastUpdate = Date.now();
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+
+    // Make available globally
+    window.player = player;
+    window.hud = hud;
+    window.inventoryUI = inventoryUI;
+
+    // Event listeners for sliders
+    ['health', 'hunger', 'thirst', 'energy'].forEach(stat => {
+      const slider = document.getElementById(`${stat}-slider`);
+      const valueDisplay = document.getElementById(`${stat}-value`);
+
+      slider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        player.stats[stat] = value;
+        valueDisplay.textContent = value;
+      });
+    });
+
+    // Time speed slider
+    const timeSpeedSlider = document.getElementById('time-speed');
+    const timeSpeedValue = document.getElementById('time-speed-value');
+
+    timeSpeedSlider.addEventListener('input', (e) => {
+      timeSpeed = parseInt(e.target.value);
+      timeSpeedValue.textContent = timeSpeed;
+    });
+
+    // Global functions
+    window.toggleTime = function() {
+      timeRunning = !timeRunning;
+      document.getElementById('time-toggle').textContent = timeRunning ? '⏸️ Pause Time' : '▶️ Resume Time';
+      log(timeRunning ? '⏰ Time resumed' : '⏸️ Time paused', 'info');
+    };
+
+    window.eatFood = function() {
+      const food = itemDB.get('cooked_meat');
+      player.consumeItem(food);
+      log('🍖 Ate cooked meat (+45 hunger, +10 health)', 'success');
+    };
+
+    window.drinkWater = function() {
+      const water = itemDB.get('water_bottle');
+      player.consumeItem(water);
+      log('💧 Drank water (+30 thirst)', 'success');
+    };
+
+    window.rest = function() {
+      player.rest(4);
+      log('😴 Rested for 4 hours (+60 energy)', 'success');
+    };
+
+    window.heal = function() {
+      const bandage = itemDB.get('bandage');
+      player.consumeItem(bandage);
+      log('🩹 Used bandage (+20 health)', 'success');
+    };
+
+    window.move = function() {
+      const success = player.moveTo(player.position.q + 1, player.position.r);
+      if (success) {
+        log('🏃 Moved to new location (-2 energy)', 'info');
+      } else {
+        log('❌ Too exhausted to move', 'error');
+      }
+    };
+
+    window.addEquipment = function() {
+      player.inventory.addItem(itemDB.get('stone_axe'));
+      player.inventory.addItem(itemDB.get('leather_vest'));
+      player.inventory.addItem(itemDB.get('knife'));
+
+      player.inventory.equip(itemDB.get('stone_axe'), 'weapon');
+      player.inventory.equip(itemDB.get('leather_vest'), 'clothing');
+      player.inventory.equip(itemDB.get('knife'), 'tool');
+
+      log('⚔️ Equipped starter gear (+bonuses visible in HUD)', 'success');
+    };
+
+    window.addEffect = function(effectType) {
+      const effects = {
+        wellRested: {
+          id: 'well_rested',
+          name: 'Well Rested',
+          type: 'buff',
+          duration: 300000, // 5 minutes
+          icon: '😊',
+          effects: { energy: 0.5 }
+        },
+        wellFed: {
+          id: 'well_fed',
+          name: 'Well Fed',
+          type: 'buff',
+          duration: 600000, // 10 minutes
+          icon: '🍽️',
+          effects: { health: 0.2 }
+        },
+        bleeding: {
+          id: 'bleeding',
+          name: 'Bleeding',
+          type: 'debuff',
+          duration: 120000, // 2 minutes
+          stackable: true,
+          icon: '🩸',
+          effects: { health: -1 }
+        },
+        poisoned: {
+          id: 'poisoned',
+          name: 'Poisoned',
+          type: 'debuff',
+          duration: 180000, // 3 minutes
+          icon: '☠️',
+          effects: { health: -0.8, energy: -0.5 }
+        },
+        dehydrated: {
+          id: 'dehydrated',
+          name: 'Severely Dehydrated',
+          type: 'debuff',
+          duration: 240000, // 4 minutes
+          icon: '💀',
+          effects: { health: -1.5, sanity: -0.5 }
+        }
+      };
+
+      const effect = effects[effectType];
+      if (effect) {
+        player.addStatusEffect(effect);
+        log(`✨ Added status effect: ${effect.name}`, effect.type === 'buff' ? 'success' : 'warning');
+      }
+    };
+
+    window.clearEffects = function() {
+      player.statusEffects = [];
+      log('🧹 Cleared all status effects', 'info');
+    };
+
+    window.scenario = function(type) {
+      switch (type) {
+        case 'healthy':
+          player.stats.health = 100;
+          player.stats.hunger = 80;
+          player.stats.thirst = 80;
+          player.stats.energy = 90;
+          player.stats.sanity = 100;
+          log('😊 Set to: Healthy Survivor', 'success');
+          break;
+
+        case 'starving':
+          player.stats.hunger = 5;
+          player.stats.thirst = 30;
+          player.stats.energy = 40;
+          log('😰 Set to: Starving', 'warning');
+          break;
+
+        case 'exhausted':
+          player.stats.energy = 5;
+          player.stats.hunger = 40;
+          player.stats.sanity = 60;
+          log('😴 Set to: Exhausted', 'warning');
+          break;
+
+        case 'critical':
+          player.stats.health = 15;
+          player.stats.hunger = 10;
+          player.stats.thirst = 5;
+          player.stats.energy = 10;
+          player.stats.sanity = 30;
+          log('💀 Set to: Critical Condition', 'error');
+          break;
+
+        case 'thriving':
+          player.stats.health = 100;
+          player.stats.hunger = 100;
+          player.stats.thirst = 100;
+          player.stats.energy = 100;
+          player.stats.sanity = 100;
+          addEffect('wellRested');
+          addEffect('wellFed');
+          log('💪 Set to: Thriving', 'success');
+          break;
+
+        case 'death':
+          player.stats.health = 1;
+          player.stats.hunger = 0;
+          player.stats.thirst = 0;
+          log('☠️ Set to: Near Death', 'error');
+          break;
+      }
+
+      // Update sliders
+      ['health', 'hunger', 'thirst', 'energy'].forEach(stat => {
+        document.getElementById(`${stat}-slider`).value = player.stats[stat];
+        document.getElementById(`${stat}-value`).textContent = Math.round(player.stats[stat]);
+      });
+    };
+
+    function log(message, type = 'info') {
+      const logPanel = document.getElementById('log-panel');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+
+      const timestamp = new Date().toLocaleTimeString();
+      entry.textContent = `[${timestamp}] ${message}`;
+
+      logPanel.insertBefore(entry, logPanel.firstChild);
+
+      while (logPanel.children.length > 30) {
+        logPanel.removeChild(logPanel.lastChild);
+      }
+    }
+
+    log('✅ Player system loaded!', 'success');
+    log('💡 Click HUD to expand, press I for inventory', 'info');
+  </script>
+</body>
+</html>

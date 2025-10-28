@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory System Test - Hedonism Island</title>
+  
+  <!-- Inventory UI Styles -->
+  <link rel="stylesheet" href="../src/styles/inventoryUI.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    .test-container {
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 20px;
+      color: #4dd0e1;
+      text-shadow: 0 0 20px rgba(77, 208, 225, 0.5);
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 18px;
+      color: #9e9e9e;
+      margin-bottom: 40px;
+    }
+
+    .test-panel {
+      background: rgba(26, 26, 46, 0.8);
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .test-panel h2 {
+      font-size: 24px;
+      color: #4dd0e1;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #0f3460;
+      padding-bottom: 10px;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .test-button {
+      padding: 15px 25px;
+      background: linear-gradient(135deg, #0f3460, #1a1a2e);
+      border: 2px solid #4dd0e1;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .test-button:hover {
+      background: linear-gradient(135deg, #4dd0e1, #0f3460);
+      box-shadow: 0 0 20px rgba(77, 208, 225, 0.6);
+      transform: translateY(-3px);
+    }
+
+    .test-button:active {
+      transform: translateY(0);
+    }
+
+    .test-button.primary {
+      background: linear-gradient(135deg, #4dd0e1, #26c6da);
+      border-color: #26c6da;
+      font-size: 20px;
+      grid-column: 1 / -1;
+    }
+
+    .test-button.danger {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      border-color: #e74c3c;
+    }
+
+    .info-panel {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .info-panel h3 {
+      color: #4dd0e1;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(77, 208, 225, 0.2);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: #9e9e9e;
+      font-weight: 600;
+    }
+
+    .info-value {
+      color: #4dd0e1;
+      font-weight: 700;
+    }
+
+    .instructions {
+      background: rgba(255, 215, 0, 0.1);
+      border: 2px solid #ffd700;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .instructions h3 {
+      color: #ffd700;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding-left: 20px;
+    }
+
+    .instructions li {
+      padding: 5px 0;
+      color: #e0e0e0;
+    }
+
+    .instructions li:before {
+      content: "▶ ";
+      color: #ffd700;
+      margin-right: 10px;
+    }
+
+    .log-panel {
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .log-entry {
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(77, 208, 225, 0.1);
+    }
+
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+
+    .log-success {
+      color: #2ecc71;
+    }
+
+    .log-error {
+      color: #e74c3c;
+    }
+
+    .log-info {
+      color: #4dd0e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🏝️ INVENTORY SYSTEM TEST 🏝️</h1>
+    <p class="subtitle">Test the elegant multi-panel inventory interface</p>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h3>📋 How to Use</h3>
+      <ul>
+        <li>Press <strong>I</strong> key to open/close inventory</li>
+        <li>Click items in grid to select and view details</li>
+        <li>Drag items between slots to rearrange</li>
+        <li>Use buttons in detail panel to Use/Equip/Drop items</li>
+        <li>Click equipped items to unequip them</li>
+        <li>Watch weight bar change colors as you add items</li>
+      </ul>
+    </div>
+
+    <!-- Main Controls -->
+    <div class="test-panel">
+      <h2>🎮 Main Controls</h2>
+      <div class="button-grid">
+        <button class="test-button primary" onclick="toggleInventory()">
+          OPEN INVENTORY (I)
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Add Items -->
+    <div class="test-panel">
+      <h2>➕ Quick Add Items</h2>
+      <div class="button-grid">
+        <button class="test-button" onclick="addItem('coconut', 5)">
+          🥥 Add 5 Coconuts
+        </button>
+        <button class="test-button" onclick="addItem('water_bottle', 3)">
+          💧 Add 3 Water
+        </button>
+        <button class="test-button" onclick="addItem('wood', 20)">
+          🪵 Add 20 Wood
+        </button>
+        <button class="test-button" onclick="addItem('stone', 15)">
+          🪨 Add 15 Stone
+        </button>
+        <button class="test-button" onclick="addItem('stone_axe', 1)">
+          🪓 Add Stone Axe
+        </button>
+        <button class="test-button" onclick="addItem('bow', 1)">
+          🏹 Add Bow
+        </button>
+        <button class="test-button" onclick="addItem('leather_vest', 1)">
+          🦺 Add Leather Vest
+        </button>
+        <button class="test-button" onclick="addItem('leather_backpack', 1)">
+          🎒 Add Backpack
+        </button>
+      </div>
+    </div>
+
+    <!-- Scenarios -->
+    <div class="test-panel">
+      <h2>🎯 Test Scenarios</h2>
+      <div class="button-grid">
+        <button class="test-button" onclick="fillWithRandomItems()">
+          🎲 Fill with Random Items
+        </button>
+        <button class="test-button" onclick="testStacking()">
+          📚 Test Stacking
+        </button>
+        <button class="test-button" onclick="testEquipment()">
+          ⚔️ Test Equipment
+        </button>
+        <button class="test-button" onclick="testWeightLimit()">
+          ⚖️ Test Weight Limit
+        </button>
+        <button class="test-button danger" onclick="clearInventory()">
+          🗑️ Clear All
+        </button>
+      </div>
+    </div>
+
+    <!-- Inventory Stats -->
+    <div class="test-panel">
+      <div class="info-panel">
+        <h3>📊 Inventory Stats</h3>
+        <div class="info-row">
+          <span class="info-label">Items:</span>
+          <span class="info-value" id="stat-items">0 / 20 slots</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Weight:</span>
+          <span class="info-value" id="stat-weight">0.0 / 100.0 lbs</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Equipment:</span>
+          <span class="info-value" id="stat-equipment">0 / 4 equipped</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Unique Items:</span>
+          <span class="info-value" id="stat-unique">0 types</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Log -->
+    <div class="test-panel">
+      <h2>📝 Action Log</h2>
+      <div class="log-panel" id="log-panel">
+        <div class="log-entry log-info">Ready to test inventory system...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Modules -->
+  <script type="module">
+    import { Item } from '../src/modules/item.js';
+    import { Inventory } from '../src/modules/inventory.js';
+    import { itemDB } from '../src/data/itemDatabase.js';
+    import { InventoryUI } from '../src/ui/inventoryUI.js';
+
+    // Create inventory and UI
+    const inventory = new Inventory();
+    const inventoryUI = new InventoryUI(inventory);
+
+    // Make available globally for testing
+    window.inventory = inventory;
+    window.inventoryUI = inventoryUI;
+    window.itemDB = itemDB;
+
+    // Helper functions
+    window.toggleInventory = function() {
+      inventoryUI.toggle();
+      updateStats();
+    };
+
+    window.addItem = function(itemId, quantity = 1) {
+      const item = itemDB.get(itemId);
+      if (!item) {
+        log(`❌ Item not found: ${itemId}`, 'error');
+        return;
+      }
+
+      for (let i = 0; i < quantity; i++) {
+        const success = inventory.addItem(itemDB.get(itemId));
+        if (!success && i === 0) {
+          log(`❌ Failed to add ${item.name}`, 'error');
+          return;
+        }
+      }
+
+      log(`✅ Added ${quantity}x ${item.name}`, 'success');
+      inventoryUI.refresh();
+      updateStats();
+    };
+
+    window.clearInventory = function() {
+      inventory.slots.forEach(slot => slot.clear());
+      Object.keys(inventory.equipment).forEach(key => {
+        inventory.equipment[key] = null;
+      });
+      log('🗑️ Inventory cleared', 'info');
+      inventoryUI.refresh();
+      updateStats();
+    };
+
+    window.fillWithRandomItems = function() {
+      clearInventory();
+      
+      const items = [
+        'coconut', 'berries', 'water_bottle', 'wood', 'stone',
+        'fiber', 'cooked_fish', 'bandage', 'knife', 'stone_axe'
+      ];
+
+      for (let i = 0; i < 15; i++) {
+        const randomItem = items[Math.floor(Math.random() * items.length)];
+        const quantity = Math.floor(Math.random() * 5) + 1;
+        addItem(randomItem, quantity);
+      }
+
+      log('🎲 Filled with random items', 'success');
+    };
+
+    window.testStacking = function() {
+      clearInventory();
+      
+      // Add many stackable items
+      addItem('wood', 50);
+      addItem('stone', 30);
+      addItem('fiber', 25);
+      addItem('berries', 40);
+      
+      log('📚 Stacking test: Added many stackable items', 'info');
+      
+      // Try stacking
+      inventory.stackAll();
+      inventoryUI.refresh();
+      
+      log('📚 Called stackAll() - check how items consolidated', 'success');
+    };
+
+    window.testEquipment = function() {
+      clearInventory();
+      
+      // Add equipment items
+      addItem('stone_axe', 1);
+      addItem('knife', 1);
+      addItem('leather_vest', 1);
+      addItem('leather_backpack', 1);
+      
+      log('⚔️ Equipment test: Added various equipment', 'info');
+      log('⚔️ Select items and click "Equip" to test', 'info');
+    };
+
+    window.testWeightLimit = function() {
+      clearInventory();
+      
+      // Add heavy items until near limit
+      for (let i = 0; i < 30; i++) {
+        addItem('stone', 1);
+      }
+      
+      log('⚖️ Weight test: Added 30 stone (30 lbs)', 'info');
+      log('⚖️ Watch the weight bar color change!', 'info');
+    };
+
+    function updateStats() {
+      // Count items
+      let itemCount = 0;
+      let uniqueItems = new Set();
+      inventory.slots.forEach(slot => {
+        if (!slot.isEmpty()) {
+          itemCount++;
+          uniqueItems.add(slot.item.id);
+        }
+      });
+
+      // Count equipment
+      let equipmentCount = 0;
+      Object.values(inventory.equipment).forEach(item => {
+        if (item) equipmentCount++;
+      });
+
+      // Update UI
+      document.getElementById('stat-items').textContent = `${itemCount} / 20 slots`;
+      document.getElementById('stat-weight').textContent = 
+        `${inventory.getTotalWeight().toFixed(1)} / ${inventory.maxWeight.toFixed(1)} lbs`;
+      document.getElementById('stat-equipment').textContent = 
+        `${equipmentCount} / 4 equipped`;
+      document.getElementById('stat-unique').textContent = 
+        `${uniqueItems.size} types`;
+    }
+
+    function log(message, type = 'info') {
+      const logPanel = document.getElementById('log-panel');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      entry.textContent = `[${timestamp}] ${message}`;
+      
+      logPanel.insertBefore(entry, logPanel.firstChild);
+      
+      // Keep only last 20 entries
+      while (logPanel.children.length > 20) {
+        logPanel.removeChild(logPanel.lastChild);
+      }
+    }
+
+    // Initial update
+    updateStats();
+    log('✅ Inventory system loaded successfully!', 'success');
+    log('💡 Press I to open inventory, or use buttons above', 'info');
+  </script>
+</body>
+</html>

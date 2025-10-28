@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Travel & Territory System Test - Hedonism Island</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #map-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #controls {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border: 2px solid #4dd0e1;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 300px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+
+    #controls h2 {
+      color: #4dd0e1;
+      font-size: 18px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #controls h3 {
+      color: #4dd0e1;
+      font-size: 14px;
+      margin: 16px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+    }
+
+    .control-label {
+      display: block;
+      font-size: 12px;
+      color: #b0b0b0;
+      margin-bottom: 6px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: rgba(77, 208, 225, 0.1);
+      border: 2px solid #4dd0e1;
+      border-radius: 6px;
+      color: #4dd0e1;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover {
+      background: rgba(77, 208, 225, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(77, 208, 225, 0.3);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.danger {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    button.danger:hover {
+      background: rgba(255, 107, 107, 0.2);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    }
+
+    button.success {
+      border-color: #4ade80;
+      color: #4ade80;
+    }
+
+    button.success:hover {
+      background: rgba(74, 222, 128, 0.2);
+      box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+    }
+
+    .stat-display {
+      background: rgba(77, 208, 225, 0.05);
+      border: 1px solid rgba(77, 208, 225, 0.3);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      color: #b0b0b0;
+    }
+
+    .stat-value {
+      color: #4dd0e1;
+      font-weight: bold;
+    }
+
+    .info-panel {
+      background: rgba(77, 208, 225, 0.05);
+      border: 1px solid rgba(77, 208, 225, 0.3);
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #b0b0b0;
+      margin-top: 16px;
+    }
+
+    .info-panel strong {
+      color: #4dd0e1;
+    }
+
+    /* Custom scrollbar */
+    #controls::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #controls::-webkit-scrollbar-track {
+      background: rgba(77, 208, 225, 0.1);
+      border-radius: 4px;
+    }
+
+    #controls::-webkit-scrollbar-thumb {
+      background: #4dd0e1;
+      border-radius: 4px;
+    }
+
+    #controls::-webkit-scrollbar-thumb:hover {
+      background: #00bcd4;
+    }
+  </style>
+  <link rel="stylesheet" href="../src/styles/mapTravelUI.css">
+</head>
+<body>
+  <div id="game-container">
+    <div id="map-container">
+      <canvas id="map-canvas"></canvas>
+    </div>
+  </div>
+
+  <div id="controls">
+    <h2>🗺️ Travel System Test</h2>
+
+    <div class="control-group">
+      <h3>Player Stats</h3>
+      <div id="player-stats" class="stat-display">
+        <div class="stat-row">
+          <span class="stat-label">Energy:</span>
+          <span class="stat-value" id="stat-energy">100</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Position:</span>
+          <span class="stat-value" id="stat-position">(0, 0)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Traveling:</span>
+          <span class="stat-value" id="stat-traveling">No</span>
+        </div>
+      </div>
+
+      <button onclick="restoreEnergy()">⚡ Restore Energy</button>
+    </div>
+
+    <div class="control-group">
+      <h3>Territory Stats</h3>
+      <div id="territory-stats" class="stat-display">
+        <div class="stat-row">
+          <span class="stat-label">Discovered:</span>
+          <span class="stat-value" id="stat-discovered">1</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Visited:</span>
+          <span class="stat-value" id="stat-visited">1</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Player Owned:</span>
+          <span class="stat-value" id="stat-owned">1</span>
+        </div>
+      </div>
+
+      <button onclick="revealMap()">🔍 Reveal All Map</button>
+      <button onclick="discoverNearby()">👁️ Discover Nearby</button>
+    </div>
+
+    <div class="control-group">
+      <h3>Quick Travel</h3>
+      <button onclick="travelNorth()">⬆️ North</button>
+      <button onclick="travelNorthEast()">↗️ Northeast</button>
+      <button onclick="travelSouthEast()">↘️ Southeast</button>
+      <button onclick="travelSouth()">⬇️ South</button>
+      <button onclick="travelSouthWest()">↙️ Southwest</button>
+      <button onclick="travelNorthWest()">↖️ Northwest</button>
+    </div>
+
+    <div class="control-group">
+      <h3>Testing</h3>
+      <button onclick="spawnResources()" class="success">🌳 Spawn Resources</button>
+      <button onclick="spawnNPCs()" class="success">👤 Spawn NPCs</button>
+      <button onclick="spawnEvents()" class="success">❗ Spawn Events</button>
+      <button onclick="triggerEncounter()" class="danger">⚔️ Force Encounter</button>
+    </div>
+
+    <div class="control-group">
+      <h3>Map Control</h3>
+      <button onclick="resetMap()" class="danger">🔄 Reset Map</button>
+      <button onclick="toggleLegend()">📊 Toggle Legend</button>
+    </div>
+
+    <div class="info-panel">
+      <strong>How to Play:</strong><br>
+      • <strong>Click</strong> adjacent hexes to travel<br>
+      • <strong>Hover</strong> hexes for info<br>
+      • <strong>Cyan</strong> = Your territory (faster, cheaper)<br>
+      • <strong>Colored</strong> = Faction territory<br>
+      • <strong>Black fog</strong> = Undiscovered<br>
+      • <strong>Gray fog</strong> = Discovered but not visited<br>
+      • Travel discovers adjacent tiles!
+    </div>
+  </div>
+
+  <!-- Territory Legend -->
+  <div id="territory-legend" class="territory-legend" style="display: none;">
+    <div class="territory-legend-title">Factions</div>
+    <div class="territory-legend-item">
+      <div class="territory-legend-color" style="background: #4dd0e1;"></div>
+      <span>Player</span>
+    </div>
+    <div class="territory-legend-item">
+      <div class="territory-legend-color" style="background: #4ade80;"></div>
+      <span>Castaways</span>
+    </div>
+    <div class="territory-legend-item">
+      <div class="territory-legend-color" style="background: #fbbf24;"></div>
+      <span>Native Clan 1</span>
+    </div>
+    <div class="territory-legend-item">
+      <div class="territory-legend-color" style="background: #f97316;"></div>
+      <span>Native Clan 2</span>
+    </div>
+    <div class="territory-legend-item">
+      <div class="territory-legend-color" style="background: #dc2626;"></div>
+      <span>Mercenaries</span>
+    </div>
+  </div>
+
+  <script type="module">
+    import { Player } from '../src/modules/player.js';
+    import { MapEngine } from '../src/modules/mapEngine.js';
+    import { Territory, TerritoryManager } from '../src/modules/territory.js';
+    import { TravelSystem } from '../src/modules/travel.js';
+    import { MapTravelUI } from '../src/ui/mapTravelUI.js';
+
+    // Initialize game systems
+    const canvas = document.getElementById('map-canvas');
+    const mapEngine = new MapEngine(canvas, { width: canvas.clientWidth, height: canvas.clientHeight });
+    
+    // Generate map
+    console.log('🗺️ Generating island map...');
+    mapEngine.generateIsland();
+    mapEngine.render();
+
+    // Initialize player
+    const player = new Player('TestTraveler');
+    player.energy = 100;
+
+    // Initialize territory manager
+    const territoryManager = new TerritoryManager();
+    territoryManager.initFromMap(mapEngine);
+
+    // Initialize travel system
+    const travelSystem = new TravelSystem(player, territoryManager);
+    travelSystem.setPosition(0, 0);
+
+    // Generate starting territories
+    territoryManager.generateStartingTerritories({ q: 0, r: 0 });
+
+    // Initialize travel UI
+    const mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
+    mapTravelUI.render();
+
+    // Event listeners
+    travelSystem.on('travelStart', (data) => {
+      console.log('🚶 Started traveling:', data);
+      updateStats();
+    });
+
+    travelSystem.on('travelComplete', (data) => {
+      console.log('✅ Arrived at destination:', data);
+      mapTravelUI.showNotification('Arrived at destination!', 'success');
+      updateStats();
+      mapTravelUI.render();
+      mapEngine.render();
+    });
+
+    travelSystem.on('discoveries', (data) => {
+      console.log('🔍 Discoveries made:', data);
+      data.discoveries.forEach(discovery => {
+        if (discovery.type === 'resource') {
+          mapTravelUI.showNotification(`Found ${discovery.nodeType} node!`, 'success');
+        } else if (discovery.type === 'npc') {
+          mapTravelUI.showNotification('Found an NPC!', 'success');
+        } else if (discovery.type === 'event') {
+          mapTravelUI.showNotification('Discovered an event!', 'info');
+        }
+      });
+      mapTravelUI.render();
+    });
+
+    travelSystem.on('factionEncounter', (data) => {
+      console.log('⚔️ Faction encounter:', data);
+      mapTravelUI.showNotification(
+        `${data.encounterType} with ${data.faction}!`,
+        data.encounterType === 'attack' ? 'error' : 'warning'
+      );
+    });
+
+    // Game loop
+    let lastTime = Date.now();
+    function gameLoop() {
+      const now = Date.now();
+      const deltaTime = now - lastTime;
+      lastTime = now;
+
+      // Update travel system
+      travelSystem.update(deltaTime);
+
+      // Update UI
+      mapTravelUI.update(deltaTime);
+      updateStats();
+
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+
+    // Update stats display
+    function updateStats() {
+      document.getElementById('stat-energy').textContent = Math.round(player.energy);
+      document.getElementById('stat-position').textContent = 
+        `(${travelSystem.currentPosition.q}, ${travelSystem.currentPosition.r})`;
+      document.getElementById('stat-traveling').textContent = 
+        travelSystem.isTraveling ? 'Yes' : 'No';
+
+      const stats = territoryManager.getStats();
+      document.getElementById('stat-discovered').textContent = stats.discovered;
+      document.getElementById('stat-visited').textContent = stats.visited;
+      document.getElementById('stat-owned').textContent = stats.owned.player || 0;
+    }
+
+    // Control functions
+    window.restoreEnergy = () => {
+      player.energy = 100;
+      mapTravelUI.showNotification('Energy restored!', 'success');
+      updateStats();
+    };
+
+    window.revealMap = () => {
+      territoryManager.territories.forEach(territory => {
+        territory.discover('player');
+        territory.visibleFromFog = true;
+      });
+      mapTravelUI.render();
+      mapEngine.render();
+      mapTravelUI.showNotification('Map revealed!', 'info');
+      updateStats();
+    };
+
+    window.discoverNearby = () => {
+      territoryManager.getVisibleTerritories(travelSystem.currentPosition, 3);
+      mapTravelUI.render();
+      mapEngine.render();
+      mapTravelUI.showNotification('Nearby area discovered!', 'info');
+      updateStats();
+    };
+
+    // Travel functions
+    window.travelNorth = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q,
+      travelSystem.currentPosition.r - 1
+    );
+    
+    window.travelNorthEast = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q + 1,
+      travelSystem.currentPosition.r - 1
+    );
+    
+    window.travelSouthEast = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q + 1,
+      travelSystem.currentPosition.r
+    );
+    
+    window.travelSouth = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q,
+      travelSystem.currentPosition.r + 1
+    );
+    
+    window.travelSouthWest = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q - 1,
+      travelSystem.currentPosition.r + 1
+    );
+    
+    window.travelNorthWest = () => travelSystem.startTravel(
+      travelSystem.currentPosition.q - 1,
+      travelSystem.currentPosition.r
+    );
+
+    // Testing functions
+    window.spawnResources = () => {
+      let count = 0;
+      territoryManager.territories.forEach(territory => {
+        if (territory.visited && !territory.hasResourceNode && Math.random() < 0.5) {
+          const nodeTypes = ['tree', 'rock', 'bush'];
+          territory.hasResourceNode = true;
+          territory.resourceNodeId = `${nodeTypes[Math.floor(Math.random() * nodeTypes.length)]}_${territory.position.q}_${territory.position.r}`;
+          count++;
+        }
+      });
+      mapTravelUI.render();
+      mapTravelUI.showNotification(`Spawned ${count} resource nodes!`, 'success');
+    };
+
+    window.spawnNPCs = () => {
+      let count = 0;
+      territoryManager.territories.forEach(territory => {
+        if (territory.visited && !territory.hasNPC && Math.random() < 0.3) {
+          territory.hasNPC = true;
+          territory.npcId = `npc_${territory.position.q}_${territory.position.r}`;
+          count++;
+        }
+      });
+      mapTravelUI.render();
+      mapTravelUI.showNotification(`Spawned ${count} NPCs!`, 'success');
+    };
+
+    window.spawnEvents = () => {
+      let count = 0;
+      territoryManager.territories.forEach(territory => {
+        if (territory.visited && !territory.hasEvent && Math.random() < 0.4) {
+          territory.hasEvent = true;
+          territory.eventId = `event_${territory.position.q}_${territory.position.r}`;
+          count++;
+        }
+      });
+      mapTravelUI.render();
+      mapTravelUI.showNotification(`Spawned ${count} events!`, 'success');
+    };
+
+    window.triggerEncounter = () => {
+      const currentTerritory = travelSystem.getCurrentTerritory();
+      if (currentTerritory && currentTerritory.owner && currentTerritory.owner !== 'player') {
+        travelSystem.rollFactionEncounter(
+          currentTerritory.owner,
+          'hostile',
+          currentTerritory
+        );
+      } else {
+        mapTravelUI.showNotification('Not in faction territory!', 'error');
+      }
+    };
+
+    window.resetMap = () => {
+      mapEngine.generateIsland();
+      mapEngine.render();
+      territoryManager.initFromMap(mapEngine);
+      territoryManager.generateStartingTerritories({ q: 0, r: 0 });
+      travelSystem.setPosition(0, 0);
+      mapTravelUI.render();
+      mapTravelUI.showNotification('Map reset!', 'info');
+      updateStats();
+    };
+
+    window.toggleLegend = () => {
+      const legend = document.getElementById('territory-legend');
+      legend.style.display = legend.style.display === 'none' ? 'block' : 'none';
+    };
+
+    // Expose for debugging
+    window.player = player;
+    window.mapEngine = mapEngine;
+    window.territoryManager = territoryManager;
+    window.travelSystem = travelSystem;
+    window.mapTravelUI = mapTravelUI;
+
+    console.log('✅ Travel system initialized!');
+    console.log('📍 Click adjacent hexes to travel');
+    console.log('🎮 Use control panel for testing');
+    updateStats();
+  </script>
+</body>
+</html>

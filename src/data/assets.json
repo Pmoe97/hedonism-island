@@ -1,0 +1,57 @@
+{
+  "backgrounds": {
+    "mainMenu": {
+      "url": "https://user.uploads.dev/file/f2298da58835e5109933fa05e8e40561.png",
+      "description": "Tropical beach bikini girl - main menu background",
+      "format": "PNG",
+      "size": "~500KB",
+      "addedDate": "2025-10-25"
+    }
+  },
+  "characters": {
+    "_template": {
+      "url": "https://example.com/character.png",
+      "name": "Character Name",
+      "description": "Brief description",
+      "format": "PNG or WebP",
+      "size": "estimated size",
+      "addedDate": "YYYY-MM-DD",
+      "tags": ["female", "castaway", "portrait"]
+    }
+  },
+  "ui": {
+    "_template": {
+      "url": "https://example.com/icon.png",
+      "description": "UI element description",
+      "format": "PNG or WebP",
+      "size": "estimated size",
+      "addedDate": "YYYY-MM-DD"
+    }
+  },
+  "scenes": {
+    "_template": {
+      "url": "https://example.com/scene.png",
+      "description": "Scene illustration",
+      "format": "PNG or WebP",
+      "size": "estimated size",
+      "addedDate": "YYYY-MM-DD",
+      "tags": ["beach", "night", "nsfw"]
+    }
+  },
+  "items": {
+    "_template": {
+      "url": "https://example.com/item.png",
+      "description": "Item icon/illustration",
+      "format": "PNG or WebP",
+      "size": "estimated size",
+      "addedDate": "YYYY-MM-DD"
+    }
+  },
+  "_notes": {
+    "urlHost": "Use user.uploads.dev or similar free image hosting",
+    "formats": "PNG for quick uploads, WebP for production optimization",
+    "sizes": "Keep character portraits under 200KB, backgrounds under 500KB",
+    "naming": "Use descriptive keys for easy code reference",
+    "tags": "Add searchable tags for filtering assets"
+  }
+}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hex Map Test - Hedonism Island</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 15px 20px;
+      border-bottom: 2px solid rgba(76, 175, 80, 0.3);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      color: #4CAF50;
+      margin-bottom: 5px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      padding: 8px 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #45a049;
+      transform: translateY(-2px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    input[type="number"] {
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      color: white;
+      width: 120px;
+      font-size: 0.9rem;
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+
+    #map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #map-canvas {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #map-canvas:active {
+      cursor: grabbing;
+    }
+
+    .stats {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      min-width: 200px;
+    }
+
+    .stats h3 {
+      color: #4CAF50;
+      margin-bottom: 10px;
+      font-size: 1rem;
+    }
+
+    .stats-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .stat-label {
+      color: #aaa;
+    }
+
+    .stat-value {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+
+    .legend h3 {
+      color: #4CAF50;
+      margin-bottom: 10px;
+      font-size: 1rem;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .instructions {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      text-align: center;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>🏝️ Hedonism Island - Hex Map Generator</h1>
+      <div class="controls">
+        <button id="generate-btn">🎲 Generate New Map</button>
+        <button id="reset-view-btn">🎯 Reset View</button>
+        <label>Seed:</label>
+        <input type="number" id="seed-input" value="12345" />
+        <span style="color: #666; margin-left: auto; font-size: 0.85rem;">
+          Drag to pan • Scroll to zoom
+        </span>
+      </div>
+    </header>
+
+    <div id="map-container">
+      <canvas id="map-canvas"></canvas>
+      
+      <div class="instructions">
+        🖱️ Drag to pan • 🔍 Scroll to zoom • 🎲 Generate to see a new island
+      </div>
+
+      <div class="stats">
+        <h3>📊 Map Stats</h3>
+        <div class="stats-list" id="stats-list">
+          <div class="stat-item">
+            <span class="stat-label">Loading...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <h3>🎨 Terrain Legend</h3>
+        <div class="legend-grid">
+          <div class="legend-color" style="background: #1e3a8a;"></div><span>Sea</span>
+          <div class="legend-color" style="background: #fde047;"></div><span>Beach</span>
+          <div class="legend-color" style="background: #3b82f6;"></div><span>River</span>
+          <div class="legend-color" style="background: #a3e635;"></div><span>Savanna</span>
+          <div class="legend-color" style="background: #22c55e;"></div><span>Forest</span>
+          <div class="legend-color" style="background: #15803d;"></div><span>Rainforest</span>
+          <div class="legend-color" style="background: #a8a29e;"></div><span>Dry Hill</span>
+          <div class="legend-color" style="background: #65a30d;"></div><span>Jungle Hill</span>
+          <div class="legend-color" style="background: #6ee7b7;"></div><span>Cloud Forest</span>
+          <div class="legend-color" style="background: #78716c;"></div><span>Rocky Peak</span>
+          <div class="legend-color" style="background: #cbd5e1;"></div><span>Misty Peak</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { MapEngine } from './src/modules/mapEngine.js';
+    import { MapRenderer } from './src/modules/mapRenderer.js';
+
+    const canvas = document.getElementById('map-canvas');
+    const seedInput = document.getElementById('seed-input');
+    const generateBtn = document.getElementById('generate-btn');
+    const resetViewBtn = document.getElementById('reset-view-btn');
+    const statsList = document.getElementById('stats-list');
+
+    let currentMap = null;
+    let renderer = null;
+
+    function generateMap() {
+      const seed = parseInt(seedInput.value) || Date.now();
+      console.log('🎲 Generating map with seed:', seed);
+
+      const engine = new MapEngine(seed);
+      currentMap = engine.generate();
+
+      // Create renderer if needed
+      if (!renderer) {
+        renderer = new MapRenderer(canvas, currentMap.hexGrid);
+        setupControls();
+      }
+
+      // Render the map
+      renderer.render(currentMap.tiles);
+
+      // Update stats
+      updateStats(currentMap.stats);
+    }
+
+    function updateStats(stats) {
+      const html = Object.entries(stats.terrainCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([terrain, count]) => `
+          <div class="stat-item">
+            <span class="stat-label">${terrain}:</span>
+            <span class="stat-value">${count}</span>
+          </div>
+        `).join('');
+
+      statsList.innerHTML = html;
+    }
+
+    function setupControls() {
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      // Mouse drag
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        
+        renderer.pan(dx, dy);
+        renderer.render(currentMap.tiles);
+        
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+
+      canvas.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+      });
+
+      // Mouse wheel zoom
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = -Math.sign(e.deltaY) * 0.1;
+        renderer.zoom(delta, e.clientX, e.clientY);
+        renderer.render(currentMap.tiles);
+      });
+
+      // Window resize
+      window.addEventListener('resize', () => {
+        renderer.setupCanvas();
+        renderer.render(currentMap.tiles);
+      });
+    }
+
+    // Button handlers
+    generateBtn.addEventListener('click', generateMap);
+    resetViewBtn.addEventListener('click', () => {
+      if (renderer) {
+        renderer.resetView();
+        renderer.render(currentMap.tiles);
+      }
+    });
+
+    // Generate initial map
+    generateMap();
+  </script>
+</body>
+</html>

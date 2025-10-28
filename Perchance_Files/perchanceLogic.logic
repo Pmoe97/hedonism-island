@@ -1,0 +1,20 @@
+generateImage = {import:text-to-image-plugin} // generates ai powered images        
+generatorStats = {import:generator-stats-plugin} //allows you to add a page view counter and get other stats about your generator        
+generateText = {import:ai-text-plugin} //generate text (stories, poems, etc) based on an instruction        
+date = {import:date-plugin} //manipulate dates, and output them in specific formats        
+favicon = {import:favicon-plugin} //allows you to change the browser tab icon for your generator        
+commentsPlugin = {import:comments-plugin} //allows you to embed a little comments/feedback section in your generator        
+fullscreenButton = {import:fullscreen-button-plugin} //fullscreen functionality        
+speak = {import:text-to-speech-plugin} //text to speech capabilit        
+literal = {import:literal-plugin} // automatically put backslashes in front of curly/square brackets in some text        
+remember = {import:unsafe-rememberchange} // allows you to save variables so they're not lost when the page is reloade        
+kv = {import:kv-plugin} //allows you to store data in a way that will remain accessible after page reload/close
+backgroundImage = {import:background-image-plugin} //allows you to easily set a background image for your generator
+
+
+
+$meta
+  title = Hedonism Island 🏝️
+  description = Survive, Tame, and Conquer Your Island in this Story Driven, AI-Powered Adult Adventure Game
+  image = https://user.uploads.dev/file/f35247bedf54d530f2c14b02f878f210.png
+  tags = RPG, survival, business sim, office simulator, corporate, management, ai npcs, free game
