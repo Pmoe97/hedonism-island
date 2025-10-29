@@ -81,7 +81,7 @@ export class MapTravelUI {
     this.territoryLayer.style.top = '0';
     this.territoryLayer.style.left = '0';
     this.territoryLayer.style.pointerEvents = 'none';
-    this.territoryLayer.style.mixBlendMode = 'multiply';
+    this.territoryLayer.style.opacity = '0.3'; // Subtle overlay instead of multiply blend
     canvas.parentElement.appendChild(this.territoryLayer);
 
     // Fog of war layer
@@ -334,7 +334,8 @@ export class MapTravelUI {
   }
 
   /**
-   * Render fog of war
+   * Render fog of war - Civilization-style clouds with 2-tile sight radius
+   * Player can see: current tile + adjacent tiles + 1 more layer out = 2-tile radius
    */
   renderFogOfWar() {
     if (!this.fogLayer) return;
@@ -345,6 +346,9 @@ export class MapTravelUI {
     
     ctx.clearRect(0, 0, this.fogLayer.width, this.fogLayer.height);
     
+    // Get player position for sight radius calculation
+    const playerPos = this.travelSystem.currentPosition;
+    
     // Apply same transformation as main renderer
     ctx.save();
     ctx.translate(renderer.offsetX, renderer.offsetY);
@@ -353,11 +357,23 @@ export class MapTravelUI {
     this.territoryManager.territories.forEach(territory => {
       const pixel = this.hexToPixel(territory.position.q, territory.position.r);
       const size = this.getHexSize();
+      
+      // Skip if hex size too small (zoomed way out)
+      if (size < 3) return;
+
+      // Calculate hex distance from player (proper hex grid distance)
+      const dq = territory.position.q - playerPos.q;
+      const dr = territory.position.r - playerPos.r;
+      const ds = (-territory.position.q - territory.position.r) - (-playerPos.q - playerPos.r);
+      const distance = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
+      
+      // 2-tile sight radius: 0 = current, 1 = adjacent, 2 = second layer
+      const inSightRange = distance <= 2;
 
       ctx.save();
       ctx.translate(pixel.x, pixel.y);
 
-      // Draw hexagon
+      // Draw hexagon shape
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const angle = (Math.PI / 3) * i - Math.PI / 6;
@@ -371,18 +387,50 @@ export class MapTravelUI {
       }
       ctx.closePath();
 
-      // Full fog (undiscovered)
+      // Auto-discover tiles within sight range
+      if (inSightRange && !territory.discovered) {
+        territory.discover('player');
+      }
+
+      // Check if this is a developed tile (acts as permanent vision source)
+      const isDeveloped = territory.owner === 'player' && territory.controlStrength >= 60;
+      const hasActiveVision = inSightRange || isDeveloped;
+
+      // FOG RENDERING LOGIC:
+      // 1. Never discovered → Total fog (completely dark)
       if (!territory.discovered) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillStyle = '#0a0f1a';
+        ctx.fill();
+        
+        const gradient = ctx.createRadialGradient(
+          size * 0.2, -size * 0.3, 0,
+          0, 0, size * 1.2
+        );
+        gradient.addColorStop(0, 'rgba(30, 41, 59, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(15, 23, 42, 0.9)');
+        gradient.addColorStop(1, 'rgba(5, 8, 15, 1)');
+        ctx.fillStyle = gradient;
         ctx.fill();
       }
-      // Partial fog (discovered but not visited)
+      // 2. Discovered but never visited → Partial fog/veil (can see terrain but dimmed)
       else if (territory.discovered && !territory.visited) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        const veilGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+        veilGradient.addColorStop(0, 'rgba(30, 41, 59, 0.5)');
+        veilGradient.addColorStop(0.6, 'rgba(15, 23, 42, 0.6)');
+        veilGradient.addColorStop(1, 'rgba(10, 15, 26, 0.7)');
+        ctx.fillStyle = veilGradient;
         ctx.fill();
       }
-      // No fog (visited)
-      // Don't draw anything
+      // 3. Visited but out of active vision → Light dim overlay
+      else if (territory.visited && !hasActiveVision) {
+        const dimGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+        dimGradient.addColorStop(0, 'rgba(15, 23, 42, 0.3)');
+        dimGradient.addColorStop(0.7, 'rgba(10, 15, 26, 0.4)');
+        dimGradient.addColorStop(1, 'rgba(5, 8, 15, 0.5)');
+        ctx.fillStyle = dimGradient;
+        ctx.fill();
+      }
+      // 4. Visited + in active vision (or developed) → No fog at all
 
       ctx.restore();
     });

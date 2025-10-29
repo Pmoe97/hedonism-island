@@ -56,6 +56,10 @@ export class MapEngine {
     this.markBeaches();
     console.log(`🏖️  Marked beach tiles`);
     
+    // Step 4.5: Mark cliffs (high-elevation coastlines)
+    this.markCliffs();
+    console.log(`🏔️  Marked cliff coastlines`);
+    
     // Step 5: Carve rivers
     this.carveRiver();
     console.log(`🏞️  Carved rivers from mountains to sea`);
@@ -304,6 +308,30 @@ export class MapEngine {
   }
 
   // ========================================
+  // STEP 3.5: CLIFFS
+  // ========================================
+
+  markCliffs() {
+    let cliffCount = 0;
+    
+    for (const [key, tile] of this.tiles) {
+      // Skip if not currently a beach
+      if (tile.terrain !== 'beach') continue;
+      
+      // Check elevation - high elevation beaches become cliffs
+      if (tile.elevation >= 0.6) {
+        tile.terrain = 'cliff';
+        tile.isPassable = true; // Can walk on cliff top from land
+        tile.canLandFromSea = false; // Cannot approach from sea
+        tile.isCliff = true;
+        cliffCount++;
+      }
+    }
+    
+    console.log(`🏔️  Converted ${cliffCount} high-elevation beaches to cliffs`);
+  }
+
+  // ========================================
   // STEP 4: RIVER CARVING
   // ========================================
 
@@ -417,12 +445,26 @@ export class MapEngine {
 
   assignBiomes() {
     for (const [key, tile] of this.tiles) {
-      if (tile.terrain === 'sea' || tile.terrain === 'beach' || tile.terrain === 'river') {
+      if (tile.terrain === 'sea' || tile.terrain === 'beach' || tile.terrain === 'cliff' || tile.terrain === 'river') {
         continue; // Already assigned
       }
       
       const elev = tile.elevation;
       const moist = tile.moisture;
+      const distToWater = tile.distanceToWater || 999;
+      
+      // Special coastal biomes (after beaches/cliffs marked)
+      // Mangrove swamps - coastal wetlands
+      if (elev < 0.4 && moist > 0.7 && distToWater <= 2) {
+        tile.terrain = 'mangrove';
+        continue;
+      }
+      
+      // Palm groves - tropical coastal (just inland from beach)
+      if (elev < 0.45 && moist > 0.6 && distToWater === 1) {
+        tile.terrain = 'palm-grove';
+        continue;
+      }
       
       // Elevation × Moisture lookup
       if (elev < 0.5) {
@@ -432,9 +474,21 @@ export class MapEngine {
         else tile.terrain = 'rainforest';
       } else if (elev < 0.7) {
         // Hills
-        if (moist < 0.4) tile.terrain = 'dry-hill';
-        else if (moist < 0.7) tile.terrain = 'jungle-hill';
-        else tile.terrain = 'cloud-forest';
+        if (moist < 0.35) {
+          // Scrubland - arid transition zone
+          tile.terrain = 'scrubland';
+        } else if (moist < 0.5) {
+          tile.terrain = 'dry-hill';
+        } else if (moist < 0.75) {
+          // Bamboo forest - mid-elevation, wet
+          if (moist > 0.65 && elev >= 0.45 && elev < 0.6) {
+            tile.terrain = 'bamboo-forest';
+          } else {
+            tile.terrain = 'jungle-hill';
+          }
+        } else {
+          tile.terrain = 'cloud-forest';
+        }
       } else {
         // Mountains
         if (moist < 0.5) tile.terrain = 'rocky-peak';
@@ -454,17 +508,19 @@ export class MapEngine {
     const requiredBiomes = [
       'savanna', 'forest', 'rainforest',
       'dry-hill', 'jungle-hill', 'cloud-forest',
-      'rocky-peak', 'misty-peak'
+      'rocky-peak', 'misty-peak',
+      // New biomes (optional but encouraged)
+      'mangrove', 'palm-grove', 'bamboo-forest', 'scrubland'
     ];
     
     const biomeCounts = {};
     for (const [key, tile] of this.tiles) {
-      if (tile.isLand && tile.terrain !== 'beach' && tile.terrain !== 'river') {
+      if (tile.isLand && tile.terrain !== 'beach' && tile.terrain !== 'cliff' && tile.terrain !== 'river') {
         biomeCounts[tile.terrain] = (biomeCounts[tile.terrain] || 0) + 1;
       }
     }
     
-    // Check for missing biomes
+    // Check for missing biomes (require at least 3 tiles)
     const missingBiomes = requiredBiomes.filter(b => !biomeCounts[b] || biomeCounts[b] < 3);
     
     if (missingBiomes.length > 0) {
@@ -475,7 +531,7 @@ export class MapEngine {
         const candidates = [];
         
         for (const [key, tile] of this.tiles) {
-          if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'river') continue;
+          if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'cliff' || tile.terrain === 'river') continue;
           
           // Check if tile's elevation/moisture is close to biome requirements
           const suitability = this.getBiomeSuitability(tile, biome);
@@ -500,13 +556,18 @@ export class MapEngine {
   getBiomeSuitability(tile, biome) {
     const elev = tile.elevation;
     const moist = tile.moisture;
+    const distToWater = tile.distanceToWater || 999;
     
     const biomeRanges = {
       'savanna': { elevMin: 0.35, elevMax: 0.5, moistMin: 0.0, moistMax: 0.3 },
       'forest': { elevMin: 0.35, elevMax: 0.5, moistMin: 0.3, moistMax: 0.6 },
       'rainforest': { elevMin: 0.35, elevMax: 0.5, moistMin: 0.6, moistMax: 1.0 },
-      'dry-hill': { elevMin: 0.5, elevMax: 0.7, moistMin: 0.0, moistMax: 0.4 },
-      'jungle-hill': { elevMin: 0.5, elevMax: 0.7, moistMin: 0.4, moistMax: 0.7 },
+      'mangrove': { elevMin: 0.25, elevMax: 0.4, moistMin: 0.7, moistMax: 1.0, maxDistToWater: 2 },
+      'palm-grove': { elevMin: 0.25, elevMax: 0.45, moistMin: 0.6, moistMax: 1.0, maxDistToWater: 1 },
+      'scrubland': { elevMin: 0.35, elevMax: 0.55, moistMin: 0.0, moistMax: 0.35 },
+      'dry-hill': { elevMin: 0.5, elevMax: 0.7, moistMin: 0.0, moistMax: 0.5 },
+      'jungle-hill': { elevMin: 0.5, elevMax: 0.7, moistMin: 0.4, moistMax: 0.75 },
+      'bamboo-forest': { elevMin: 0.45, elevMax: 0.6, moistMin: 0.65, moistMax: 1.0 },
       'cloud-forest': { elevMin: 0.5, elevMax: 0.7, moistMin: 0.7, moistMax: 1.0 },
       'rocky-peak': { elevMin: 0.7, elevMax: 1.0, moistMin: 0.0, moistMax: 0.5 },
       'misty-peak': { elevMin: 0.7, elevMax: 1.0, moistMin: 0.5, moistMax: 1.0 }
@@ -519,7 +580,13 @@ export class MapEngine {
     const elevScore = (elev >= range.elevMin && elev <= range.elevMax) ? 1 : 0;
     const moistScore = (moist >= range.moistMin && moist <= range.moistMax) ? 1 : 0;
     
-    return (elevScore + moistScore) / 2;
+    // Check water distance requirement if specified
+    let waterScore = 1;
+    if (range.maxDistToWater !== undefined) {
+      waterScore = distToWater <= range.maxDistToWater ? 1 : 0;
+    }
+    
+    return (elevScore + moistScore + waterScore) / 3;
   }
 
   // ========================================
@@ -530,22 +597,27 @@ export class MapEngine {
     const biomePriority = {
       'sea': 0,
       'beach': 1,
-      'river': 2,
-      'savanna': 3,
-      'forest': 4,
-      'rainforest': 5,
-      'dry-hill': 6,
-      'jungle-hill': 7,
-      'cloud-forest': 8,
-      'rocky-peak': 9,
-      'misty-peak': 10
+      'cliff': 2,
+      'river': 3,
+      'mangrove': 4,
+      'palm-grove': 5,
+      'savanna': 6,
+      'scrubland': 7,
+      'forest': 8,
+      'rainforest': 9,
+      'dry-hill': 10,
+      'jungle-hill': 11,
+      'bamboo-forest': 12,
+      'cloud-forest': 13,
+      'rocky-peak': 14,
+      'misty-peak': 15
     };
     
     for (let pass = 0; pass < passes; pass++) {
       const changes = [];
       
       for (const [key, tile] of this.tiles) {
-        if (!tile.isLand || tile.isRiver || tile.terrain === 'beach') continue;
+        if (!tile.isLand || tile.isRiver || tile.terrain === 'beach' || tile.terrain === 'cliff') continue;
         
         const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
         const neighborTerrains = neighbors
@@ -641,7 +713,15 @@ export class MapEngine {
       ridgeVillage: null,
       mercenaryCompound: null,
       castawayBeach: null,
-      sacredSites: []
+      sacredSites: [],
+      shipwrecks: [],
+      landmarks: {
+        waterfall: null,
+        hotSpring: null,
+        caves: [],
+        harbor: null
+      },
+      ruins: []
     };
 
     const minDistanceBetweenBases = Math.floor(this.config.radius * 0.6); // At least 60% of radius apart
@@ -674,21 +754,43 @@ export class MapEngine {
     // 5. Place sacred sites (mountains, special locations, distributed)
     this.strategicLocations.sacredSites = this.placeSacredSites();
     
+    // 6. Place shipwrecks (coastal, loot locations)
+    this.strategicLocations.shipwrecks = this.placeShipwrecks();
+    
+    // 7. Place natural landmarks (waterfalls, caves, hot springs, harbors)
+    this.placeNaturalLandmarks();
+    
+    // 8. Place ancient ruins (mysterious ancient civilization sites)
+    this.strategicLocations.ruins = this.placeAncientRuins();
+    
     // Mark these tiles with special properties
     this.markStrategicTiles();
     
-    // Log results with distances
-    console.log('📍 Strategic Locations:', {
-      castawayBeach: this.strategicLocations.castawayBeach?.tile ? 
-        `(${this.strategicLocations.castawayBeach.tile.q}, ${this.strategicLocations.castawayBeach.tile.r})` : 'none',
-      tidalVillage: this.strategicLocations.tidalVillage?.tile ?
-        `(${this.strategicLocations.tidalVillage.tile.q}, ${this.strategicLocations.tidalVillage.tile.r})` : 'none',
-      ridgeVillage: this.strategicLocations.ridgeVillage?.tile ?
-        `(${this.strategicLocations.ridgeVillage.tile.q}, ${this.strategicLocations.ridgeVillage.tile.r})` : 'none',
-      mercenaryCompound: this.strategicLocations.mercenaryCompound?.tile ?
-        `(${this.strategicLocations.mercenaryCompound.tile.q}, ${this.strategicLocations.mercenaryCompound.tile.r})` : 'none',
+    // Log results summary
+    const totalPOIs = 
+      (this.strategicLocations.castawayBeach ? 1 : 0) +
+      (this.strategicLocations.tidalVillage ? 1 : 0) +
+      (this.strategicLocations.ridgeVillage ? 1 : 0) +
+      (this.strategicLocations.mercenaryCompound ? 1 : 0) +
+      this.strategicLocations.sacredSites.length +
+      this.strategicLocations.shipwrecks.length +
+      (this.strategicLocations.landmarks.waterfall ? 1 : 0) +
+      (this.strategicLocations.landmarks.hotSpring ? 1 : 0) +
+      this.strategicLocations.landmarks.caves.length +
+      (this.strategicLocations.landmarks.harbor ? 1 : 0) +
+      this.strategicLocations.ruins.length;
+    
+    console.log(`📍 POI Summary: ${totalPOIs} total locations`, {
+      villages: 2,
+      compounds: 1,
       sacredSites: this.strategicLocations.sacredSites.length,
-      minDistance: minDistanceBetweenBases
+      shipwrecks: this.strategicLocations.shipwrecks.length,
+      landmarks: 
+        (this.strategicLocations.landmarks.waterfall ? 1 : 0) +
+        (this.strategicLocations.landmarks.hotSpring ? 1 : 0) +
+        this.strategicLocations.landmarks.caves.length +
+        (this.strategicLocations.landmarks.harbor ? 1 : 0),
+      ruins: this.strategicLocations.ruins.length
     });
     
     // Log distances between bases for verification
@@ -709,7 +811,9 @@ export class MapEngine {
     const candidates = [];
     
     for (const [key, tile] of this.tiles) {
+      // ONLY regular beaches - not cliffs or rocky shores
       if (tile.terrain !== 'beach') continue;
+      if (tile.isCliff) continue; // Extra safety check
       
       // Prefer southern beaches (positive r coordinate)
       const southScore = Math.max(0, tile.r) / this.config.radius;
@@ -959,7 +1063,7 @@ export class MapEngine {
     const candidates = [];
     
     for (const [key, tile] of this.tiles) {
-      if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'sea') continue;
+      if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'cliff' || tile.terrain === 'sea') continue;
       
       // Sacred sites are in special locations
       let score = 0;
@@ -1013,6 +1117,339 @@ export class MapEngine {
   }
 
   /**
+   * Place shipwrecks (2-3 locations)
+   * Requirements: Beach/coast, remote, salvageable loot
+   */
+  placeShipwrecks() {
+    const numWrecks = 2 + Math.floor(this.rng.next() * 2); // 2-3 wrecks
+    const wrecks = [];
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      // Shipwrecks spawn on beaches (not cliffs)
+      if (tile.terrain !== 'beach') continue;
+      
+      // Prefer remote beaches
+      const distFromCenter = this.hexGrid.distance(0, 0, tile.q, tile.r);
+      const remoteness = distFromCenter / this.config.radius;
+      
+      // Must be near sea
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const nearSea = neighbors.some(n => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.terrain === 'sea';
+      });
+      
+      if (!nearSea) continue;
+      
+      // Score based on remoteness and randomness for variety
+      const score = remoteness * 0.7 + this.rng.next() * 0.3;
+      candidates.push({ tile, score });
+    }
+    
+    if (candidates.length === 0) {
+      console.warn('⚠️  No suitable shipwreck locations found');
+      return wrecks;
+    }
+    
+    candidates.sort((a, b) => b.score - a.score);
+    
+    // Place shipwrecks with minimum spacing
+    for (let i = 0; i < Math.min(numWrecks, candidates.length); i++) {
+      const candidate = candidates[i];
+      
+      // Check distance from other wrecks
+      const tooClose = wrecks.some(w => 
+        this.hexGrid.distance(w.tile.q, w.tile.r, candidate.tile.q, candidate.tile.r) < 8
+      );
+      
+      if (!tooClose) {
+        const wreckNames = ['Broken Promise', 'Sea Maiden', 'Fortune\'s Folly', 'Last Hope', 'Wayward Soul'];
+        const lootQuality = this.rng.next();
+        wrecks.push({
+          name: `Shipwreck: ${wreckNames[i % wreckNames.length]}`,
+          type: 'shipwreck',
+          tile: candidate.tile,
+          description: 'The remains of a ship that wasn\'t so lucky. May contain salvage.',
+          lootQuality: lootQuality > 0.7 ? 'rich' : (lootQuality > 0.3 ? 'normal' : 'poor'),
+          looted: false
+        });
+      }
+    }
+    
+    console.log(`⚓ Placed ${wrecks.length} shipwrecks on remote beaches`);
+    return wrecks;
+  }
+
+  /**
+   * Place natural landmarks (waterfalls, caves, hot springs, harbors)
+   */
+  placeNaturalLandmarks() {
+    // Find waterfall (where river meets elevation drop)
+    this.strategicLocations.landmarks.waterfall = this.findWaterfall();
+    
+    // Find hot spring (high elevation + high moisture, rare)
+    this.strategicLocations.landmarks.hotSpring = this.findHotSpring();
+    
+    // Find caves (2 caves in mountains/hills)
+    this.strategicLocations.landmarks.caves = this.findCaves(2);
+    
+    // Find natural harbor (protected coastal area)
+    this.strategicLocations.landmarks.harbor = this.findNaturalHarbor();
+    
+    const landmarkCount = 
+      (this.strategicLocations.landmarks.waterfall ? 1 : 0) +
+      (this.strategicLocations.landmarks.hotSpring ? 1 : 0) +
+      this.strategicLocations.landmarks.caves.length +
+      (this.strategicLocations.landmarks.harbor ? 1 : 0);
+    
+    console.log(`🗻 Placed ${landmarkCount} natural landmarks`);
+  }
+
+  /**
+   * Find a waterfall location (river + elevation drop)
+   */
+  findWaterfall() {
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== 'river') continue;
+      
+      // Check if river is on an elevation change
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      let maxElevDiff = 0;
+      
+      for (const n of neighbors) {
+        const neighbor = this.getTile(n.q, n.r);
+        if (!neighbor || !neighbor.isLand) continue;
+        
+        const elevDiff = Math.abs(tile.elevation - neighbor.elevation);
+        maxElevDiff = Math.max(maxElevDiff, elevDiff);
+      }
+      
+      // Waterfall requires significant elevation change
+      if (maxElevDiff > 0.15) {
+        candidates.push({ tile, elevDiff: maxElevDiff });
+      }
+    }
+    
+    if (candidates.length === 0) return null;
+    
+    candidates.sort((a, b) => b.elevDiff - a.elevDiff);
+    return {
+      name: 'Cascade Falls',
+      type: 'waterfall',
+      tile: candidates[0].tile,
+      description: 'A beautiful waterfall cascading down the mountainside. Fresh water and a peaceful resting spot.'
+    };
+  }
+
+  /**
+   * Find hot spring (rare, high elevation + high moisture)
+   */
+  findHotSpring() {
+    // Only 30% chance to have a hot spring
+    if (this.rng.next() > 0.3) return null;
+    
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'cliff') continue;
+      
+      // Must be high elevation and high moisture
+      if (tile.elevation >= 0.6 && tile.moisture >= 0.7) {
+        // Prefer misty peaks and cloud forests
+        const terrainBonus = (tile.terrain === 'misty-peak' || tile.terrain === 'cloud-forest') ? 0.5 : 0;
+        const score = tile.elevation + tile.moisture + terrainBonus;
+        candidates.push({ tile, score });
+      }
+    }
+    
+    if (candidates.length === 0) return null;
+    
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: 'Steaming Springs',
+      type: 'hot-spring',
+      tile: candidates[0].tile,
+      description: 'Natural hot springs warmed by geothermal activity. Restorative and relaxing.'
+    };
+  }
+
+  /**
+   * Find cave systems
+   */
+  findCaves(numCaves = 2) {
+    const caves = [];
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'cliff') continue;
+      
+      // Caves in mountains and hills
+      if (tile.elevation >= 0.55) {
+        const score = tile.elevation + this.rng.next() * 0.3;
+        candidates.push({ tile, score });
+      }
+    }
+    
+    if (candidates.length === 0) return caves;
+    
+    candidates.sort((a, b) => b.score - a.score);
+    
+    for (let i = 0; i < Math.min(numCaves, candidates.length); i++) {
+      const candidate = candidates[i];
+      
+      // Check distance from other caves
+      const tooClose = caves.some(c => 
+        this.hexGrid.distance(c.tile.q, c.tile.r, candidate.tile.q, candidate.tile.r) < 10
+      );
+      
+      if (!tooClose) {
+        caves.push({
+          name: `Cave ${caves.length === 0 ? 'of Echoes' : 'of Shadows'}`,
+          type: 'cave',
+          tile: candidate.tile,
+          description: 'A dark cave entrance. Could provide shelter, or hide dangers.'
+        });
+      }
+    }
+    
+    return caves;
+  }
+
+  /**
+   * Find natural harbor (protected coastal area)
+   */
+  findNaturalHarbor() {
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== 'beach') continue;
+      
+      // Count surrounding land vs sea
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      let seaCount = 0;
+      let landCount = 0;
+      
+      for (const n of neighbors) {
+        const neighbor = this.getTile(n.q, n.r);
+        if (!neighbor) continue;
+        
+        if (neighbor.terrain === 'sea') seaCount++;
+        else if (neighbor.isLand) landCount++;
+      }
+      
+      // Natural harbor: some sea access but mostly protected by land
+      if (seaCount >= 2 && seaCount <= 3 && landCount >= 3) {
+        const score = landCount + this.rng.next() * 2;
+        candidates.push({ tile, score });
+      }
+    }
+    
+    if (candidates.length === 0) return null;
+    
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: 'Safe Harbor',
+      type: 'harbor',
+      tile: candidates[0].tile,
+      description: 'A naturally protected cove, sheltered from rough seas. Perfect for boats.'
+    };
+  }
+
+  /**
+   * Place ancient ruins (1-2 mysterious locations)
+   */
+  placeAncientRuins() {
+    const numRuins = 1 + Math.floor(this.rng.next() * 2); // 1-2 ruins
+    const ruins = [];
+    const candidates = [];
+    
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === 'beach' || tile.terrain === 'cliff' || tile.terrain === 'sea') continue;
+      
+      // Ruins in deep jungle OR mountain peaks
+      let score = 0;
+      
+      if (tile.terrain === 'rainforest' || tile.terrain === 'jungle-hill') {
+        // Jungle ruins
+        score = 2.0 + (tile.distanceToWater || 0) / 10;
+      } else if (tile.terrain === 'rocky-peak' || tile.terrain === 'misty-peak') {
+        // Mountain ruins
+        score = 1.8 + tile.elevation;
+      } else if (tile.terrain === 'cloud-forest' || tile.terrain === 'bamboo-forest') {
+        // Hidden in mystical forests
+        score = 1.5 + (tile.distanceToWater || 0) / 10;
+      }
+      
+      if (score > 0) {
+        // Must be far from villages
+        let tooCloseToVillage = false;
+        if (this.strategicLocations.tidalVillage) {
+          const dist = this.hexGrid.distance(
+            tile.q, tile.r,
+            this.strategicLocations.tidalVillage.tile.q,
+            this.strategicLocations.tidalVillage.tile.r
+          );
+          if (dist < 8) tooCloseToVillage = true;
+        }
+        if (this.strategicLocations.ridgeVillage) {
+          const dist = this.hexGrid.distance(
+            tile.q, tile.r,
+            this.strategicLocations.ridgeVillage.tile.q,
+            this.strategicLocations.ridgeVillage.tile.r
+          );
+          if (dist < 8) tooCloseToVillage = true;
+        }
+        
+        if (!tooCloseToVillage) {
+          candidates.push({ tile, score });
+        }
+      }
+    }
+    
+    if (candidates.length === 0) {
+      console.warn('⚠️  No suitable ruin locations found');
+      return ruins;
+    }
+    
+    candidates.sort((a, b) => b.score - a.score);
+    
+    const ruinTypes = [
+      { name: 'Ancient Temple', description: 'Stone ruins covered in vines. What civilization built this?' },
+      { name: 'Observatory Ruins', description: 'Crumbling stone circles aligned with the stars. Ancient astronomers worked here.' },
+      { name: 'Forgotten Shrine', description: 'A weathered shrine to unknown gods. Strange energy lingers.' },
+      { name: 'Overgrown Plaza', description: 'Stone pathways and broken pillars hint at a once-great city.' }
+    ];
+    
+    // Place ruins with minimum spacing
+    for (let i = 0; i < Math.min(numRuins, candidates.length); i++) {
+      const candidate = candidates[i];
+      
+      // Check distance from other ruins
+      const tooClose = ruins.some(r => 
+        this.hexGrid.distance(r.tile.q, r.tile.r, candidate.tile.q, candidate.tile.r) < 10
+      );
+      
+      if (!tooClose) {
+        const ruinType = ruinTypes[i % ruinTypes.length];
+        ruins.push({
+          name: ruinType.name,
+          type: 'ruins',
+          tile: candidate.tile,
+          description: ruinType.description,
+          explored: false,
+          lootQuality: this.rng.next() > 0.5 ? 'rich' : 'abundant'
+        });
+      }
+    }
+    
+    console.log(`🏛️  Placed ${ruins.length} ancient ruins`);
+    return ruins;
+  }
+
+  /**
    * Mark strategic location tiles with special properties
    */
   markStrategicTiles() {
@@ -1053,6 +1490,49 @@ export class MapEngine {
       tile.strategicLocation = site;
       tile.isStrategic = true;
       tile.isSacred = true;
+    }
+    
+    // Mark Shipwrecks
+    for (const wreck of this.strategicLocations.shipwrecks) {
+      const tile = wreck.tile;
+      tile.strategicLocation = wreck;
+      tile.isStrategic = true;
+      tile.isShipwreck = true;
+    }
+    
+    // Mark Landmarks
+    const landmarks = this.strategicLocations.landmarks;
+    if (landmarks.waterfall) {
+      const tile = landmarks.waterfall.tile;
+      tile.strategicLocation = landmarks.waterfall;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    if (landmarks.hotSpring) {
+      const tile = landmarks.hotSpring.tile;
+      tile.strategicLocation = landmarks.hotSpring;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    for (const cave of landmarks.caves) {
+      const tile = cave.tile;
+      tile.strategicLocation = cave;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    if (landmarks.harbor) {
+      const tile = landmarks.harbor.tile;
+      tile.strategicLocation = landmarks.harbor;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    
+    // Mark Ruins
+    for (const ruin of this.strategicLocations.ruins) {
+      const tile = ruin.tile;
+      tile.strategicLocation = ruin;
+      tile.isStrategic = true;
+      tile.isRuin = true;
     }
   }
 

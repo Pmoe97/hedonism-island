@@ -394,3 +394,70 @@
 .hud-expanded::-webkit-scrollbar-thumb:hover {
   background: rgba(77, 208, 225, 0.8);
 }
+
+/* End Turn Button */
+.end-turn-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #3bbfce 0%, #0f4c75 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 8px rgba(59, 191, 206, 0.3);
+}
+
+.end-turn-button:hover {
+  box-shadow: 0 4px 12px rgba(59, 191, 206, 0.5);
+  transform: translateY(-1px);
+}
+
+.end-turn-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(59, 191, 206, 0.4);
+}
+
+.end-turn-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Energy Display Styles */
+.hud-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-day {
+  font-size: 12px;
+  color: #3bbfce;
+  font-weight: 600;
+}
+
+.energy-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.energy-icon {
+  font-size: 18px;
+}
+
+.energy-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2ecc71;
+}

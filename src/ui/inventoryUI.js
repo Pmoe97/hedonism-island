@@ -338,12 +338,10 @@ export class InventoryUI {
    * Setup event listeners
    */
   setupEventListeners() {
-    // Close on escape key
+    // Only ESC to close (no letter shortcuts that interfere with typing)
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) {
         this.close();
-      } else if (e.key === 'i' || e.key === 'I') {
-        this.toggle();
       }
     });
     

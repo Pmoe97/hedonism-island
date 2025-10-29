@@ -10,8 +10,9 @@ import { Player } from '../modules/player.js';
  * - Smooth animations
  */
 export class PlayerHUD {
-  constructor(player) {
+  constructor(player, onEndTurn) {
     this.player = player;
+    this.onEndTurn = onEndTurn; // Callback to show end turn menu
     this.container = null;
     this.expanded = false;
     this.updateInterval = null;
@@ -48,7 +49,7 @@ export class PlayerHUD {
     const compact = document.createElement('div');
     compact.className = 'hud-compact';
     
-    // Player name/avatar
+    // Player name/avatar with day counter
     const header = document.createElement('div');
     header.className = 'hud-header';
     
@@ -57,19 +58,49 @@ export class PlayerHUD {
     avatar.textContent = '🏝️';
     header.appendChild(avatar);
     
+    const info = document.createElement('div');
+    info.className = 'hud-info';
+    
     const name = document.createElement('div');
     name.className = 'hud-name';
     name.textContent = this.player.name;
-    header.appendChild(name);
+    info.appendChild(name);
     
+    const day = document.createElement('div');
+    day.className = 'hud-day';
+    day.textContent = `Day ${this.player.daysAlive}`;
+    info.appendChild(day);
+    
+    header.appendChild(info);
     compact.appendChild(header);
     
-    // Core stat bars
-    const stats = ['health', 'hunger', 'thirst', 'energy'];
+    // Core stat bars - removed 'energy' from compact view, it's shown in header now
+    const stats = ['health', 'hunger', 'thirst'];
     stats.forEach(stat => {
       const bar = this.createStatBar(stat, true);
       compact.appendChild(bar);
     });
+    
+    // Energy display (special - shows current/max)
+    const energyDisplay = document.createElement('div');
+    energyDisplay.className = 'energy-display';
+    energyDisplay.innerHTML = `
+      <span class="energy-icon">⚡</span>
+      <span class="energy-value">${this.player.energy}/${this.player.maxEnergy}</span>
+    `;
+    compact.appendChild(energyDisplay);
+    
+    // End Turn button
+    const endTurnBtn = document.createElement('button');
+    endTurnBtn.className = 'end-turn-button';
+    endTurnBtn.textContent = 'End Turn';
+    endTurnBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Don't toggle HUD expansion
+      if (this.onEndTurn) {
+        this.onEndTurn();
+      }
+    });
+    compact.appendChild(endTurnBtn);
     
     return compact;
   }
@@ -95,20 +126,6 @@ export class PlayerHUD {
     });
     
     expanded.appendChild(statsSection);
-    
-    // Status effects
-    const effectsSection = document.createElement('div');
-    effectsSection.className = 'hud-section hud-effects';
-    
-    const effectsTitle = document.createElement('h3');
-    effectsTitle.textContent = 'STATUS EFFECTS';
-    effectsSection.appendChild(effectsTitle);
-    
-    const effectsList = document.createElement('div');
-    effectsList.className = 'effects-list';
-    effectsSection.appendChild(effectsList);
-    
-    expanded.appendChild(effectsSection);
     
     // Equipment bonuses
     const bonusesSection = document.createElement('div');
@@ -277,8 +294,30 @@ export class PlayerHUD {
    * Update HUD display
    */
   update() {
+    // Update day counter
+    const dayDisplay = this.container.querySelector('.hud-day');
+    if (dayDisplay) {
+      dayDisplay.textContent = `Day ${this.player.daysAlive}`;
+    }
+    
+    // Update energy display
+    const energyDisplay = this.container.querySelector('.energy-display .energy-value');
+    if (energyDisplay) {
+      energyDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
+      
+      // Color-code based on energy level
+      const percentage = (this.player.energy / this.player.maxEnergy) * 100;
+      if (percentage <= 20) {
+        energyDisplay.style.color = '#e74c3c';
+      } else if (percentage <= 40) {
+        energyDisplay.style.color = '#e67e22';
+      } else {
+        energyDisplay.style.color = '#2ecc71';
+      }
+    }
+    
     // Update compact bars
-    ['health', 'hunger', 'thirst', 'energy'].forEach(stat => {
+    ['health', 'hunger', 'thirst'].forEach(stat => {
       const bar = this.container.querySelector(`.hud-compact .stat-bar[data-stat="${stat}"]`);
       if (bar) {
         const fill = bar.querySelector('.stat-bar-fill');
@@ -300,7 +339,7 @@ export class PlayerHUD {
     
     // Update expanded stats
     if (this.expanded) {
-      ['health', 'hunger', 'thirst', 'energy', 'sanity'].forEach(stat => {
+      ['health', 'hunger', 'thirst', 'sanity'].forEach(stat => {
         const row = this.container.querySelector(`.hud-expanded .stat-row[data-stat="${stat}"]`);
         if (row) {
           const fill = row.querySelector('.stat-bar-fill');
@@ -321,8 +360,19 @@ export class PlayerHUD {
         }
       });
       
-      // Update status effects
-      this.updateStatusEffects();
+      // Show energy in expanded view too
+      const energyRow = this.container.querySelector(`.hud-expanded .stat-row[data-stat="energy"]`);
+      if (energyRow) {
+        const fill = energyRow.querySelector('.stat-bar-fill');
+        const valueDisplay = energyRow.querySelector('.stat-value');
+        
+        const percentage = (this.player.energy / this.player.maxEnergy) * 100;
+        
+        fill.style.width = `${percentage}%`;
+        fill.style.backgroundColor = this.getStatColor('energy', this.player.energy);
+        
+        valueDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
+      }
       
       // Update bonuses
       this.updateBonuses();
@@ -330,47 +380,6 @@ export class PlayerHUD {
       // Update time
       this.updateTime();
     }
-  }
-
-  /**
-   * Update status effects list
-   */
-  updateStatusEffects() {
-    const list = this.container.querySelector('.effects-list');
-    if (!list) return;
-    
-    list.innerHTML = '';
-    
-    if (this.player.statusEffects.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'effects-empty';
-      empty.textContent = 'No active effects';
-      list.appendChild(empty);
-      return;
-    }
-    
-    this.player.statusEffects.forEach(effect => {
-      const item = document.createElement('div');
-      item.className = `effect-item ${effect.type}`;
-      
-      const icon = document.createElement('span');
-      icon.className = 'effect-icon';
-      icon.textContent = effect.icon || '✨';
-      item.appendChild(icon);
-      
-      const name = document.createElement('span');
-      name.className = 'effect-name';
-      name.textContent = effect.name;
-      item.appendChild(name);
-      
-      const duration = document.createElement('span');
-      duration.className = 'effect-duration';
-      const minutes = Math.ceil(effect.duration / 60000);
-      duration.textContent = `${minutes}m`;
-      item.appendChild(duration);
-      
-      list.appendChild(item);
-    });
   }
 
   /**
@@ -419,11 +428,10 @@ export class PlayerHUD {
     if (!display) return;
     
     const days = Math.floor(this.player.daysAlive);
-    const hours = Math.floor(this.player.hoursAlive);
     
     display.innerHTML = `
       <div class="time-label">Survived</div>
-      <div class="time-value">${days}d ${hours}h</div>
+      <div class="time-value">${days} ${days === 1 ? 'day' : 'days'}</div>
     `;
   }
 

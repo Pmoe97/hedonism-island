@@ -10,6 +10,9 @@ import './styles/inventoryUI.css';
 import './styles/gatheringUI.css';
 import './styles/craftingUI.css';
 import './styles/mapTravelUI.css';
+import './styles/playerHUD.css';
+import './styles/endTurnMenu.css';
+import './styles/tileInteractionUI.css';
 import { PerchanceAI } from './modules/perchanceAI.js';
 import { SceneEngine } from './modules/sceneEngine.js';
 import { GameState } from './modules/gameState.js';
@@ -34,6 +37,9 @@ import { InventoryUI } from './ui/inventoryUI.js';
 import { GatheringUI } from './ui/gatheringUI.js';
 import { CraftingUI } from './ui/craftingUI.js';
 import { MapTravelUI } from './ui/mapTravelUI.js';
+import { PlayerHUD } from './ui/playerHUD.js';
+import { EndTurnMenu } from './ui/endTurnMenu.js';
+import { TileInteractionUI } from './ui/tileInteractionUI.js';
 import scenes from './data/scenes.json';
 
 // Initialize core systems
@@ -63,6 +69,9 @@ let inventoryUI = null;
 let gatheringUI = null;
 let craftingUI = null;
 let mapTravelUI = null;
+let playerHUD = null;
+let endTurnMenu = null;
+let tileInteractionUI = null;
 
 // Global options menu function (accessible from gear icon)
 function showGlobalOptionsMenu() {
@@ -93,6 +102,7 @@ window.game = {
   gatheringUI: null,
   craftingUI: null,
   mapTravelUI: null,
+  tileInteractionUI: null,
   showGlobalOptionsMenu: showGlobalOptionsMenu
 };
 
@@ -124,9 +134,12 @@ function initializeGameWorld(existingSeed = null) {
   console.log(`🏝️ Island generated: ${mapData.tiles.size} tiles`);
   
   // Initialize Player system
-  const characterData = gameState.state.player;
-  player = new Player(characterData.name, characterData.gender);
-  player.position = { q: 0, r: 0 }; // Will be set to beach tile
+  const characterData = gameState.state.player || {};
+  player = new Player({
+    name: characterData.name || 'Survivor',
+    gender: characterData.gender || 'male',
+    position: { q: 0, r: 0 } // Will be set to beach tile
+  });
   console.log(`👤 Player initialized: ${player.name}`);
   
   // Initialize Inventory
@@ -154,6 +167,7 @@ function initializeGameWorld(existingSeed = null) {
     startTile = mapData.strategicLocations.castawayBeach.tile;
     console.log(`🏖️ Using Castaway Beach at (${startTile.q}, ${startTile.r})`);
   } else {
+    console.warn('⚠️ No castaway beach in strategic locations, using fallback');
     // Fallback: find a beach tile if strategic location failed
     const beachTiles = Array.from(mapData.tiles.values())
       .filter(t => t.terrain === 'beach' && t.isLand);
@@ -203,11 +217,16 @@ function initializeGameWorld(existingSeed = null) {
   // Create game view
   gameView = new GameView(gameState, mapData, player, inventory, resourceNodeManager, territoryManager, travelSystem);
   
+  // Initialize End Turn Menu
+  endTurnMenu = new EndTurnMenu(gameState);
+  
   // Initialize UI systems
   inventoryUI = new InventoryUI(inventory, player);
   gatheringUI = new GatheringUI(player, inventory, resourceNodeManager);
   craftingUI = new CraftingUI(player);
   mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
+  playerHUD = new PlayerHUD(player, () => endTurnMenu.show());
+  tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager);
   
   console.log(`✨ All UI systems initialized`);
   
@@ -232,6 +251,9 @@ function initializeGameWorld(existingSeed = null) {
   window.game.gatheringUI = gatheringUI;
   window.game.craftingUI = craftingUI;
   window.game.mapTravelUI = mapTravelUI;
+  window.game.playerHUD = playerHUD;
+  window.game.endTurnMenu = endTurnMenu;
+  window.game.tileInteractionUI = tileInteractionUI;
   
   console.log(`🎮 Game world fully initialized!`);
   

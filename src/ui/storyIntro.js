@@ -280,12 +280,9 @@ export class StoryIntro {
       skipBtn.addEventListener('click', () => this.complete());
     }
 
-    // Also allow spacebar/enter to advance
+    // Only ESC to skip (removed Space/Enter to avoid interfering with typing)
     this.keyHandler = (e) => {
-      if (e.key === ' ' || e.key === 'Enter') {
-        e.preventDefault();
-        this.advance();
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         this.complete();
       }
     };

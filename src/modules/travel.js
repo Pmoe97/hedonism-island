@@ -27,6 +27,10 @@ export class TravelSystem {
 
   /**
    * Calculate energy cost for traveling to a tile
+   * Now uses fog-of-war system:
+   * - Undiscovered: 15-20 energy (exploring unknown terrain)
+   * - Discovered but not developed: 8-12 energy (rough paths)
+   * - Player-owned/developed: 3-5 energy (roads/trails)
    */
   calculateEnergyCost(fromPos, toPos) {
     const fromTerritory = this.territoryManager.getTerritory(fromPos.q, fromPos.r);
@@ -34,30 +38,50 @@ export class TravelSystem {
     
     if (!toTerritory) return Infinity;
 
-    let cost = this.baseEnergyCost;
-
-    // Terrain modifiers
-    const terrainCosts = {
-      'deep_water': 999, // Can't travel through deep water
-      'water': 20,       // Very expensive
-      'beach': 3,
-      'lowland': 5,
-      'forest': 7,
-      'highland': 10,
-      'mountain': 15
-    };
-    cost *= (terrainCosts[toTerritory.terrain] || 5) / 5;
-
-    // Territory ownership modifier
-    cost *= toTerritory.travelCostModifier;
-
-    // Elevation change cost
-    if (fromTerritory) {
-      const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
-      cost *= (1 + elevationChange * 2); // Steeper = more expensive
+    // Base cost depends on discovery state
+    let baseCost;
+    if (!toTerritory.discovered) {
+      baseCost = 17; // Average of 15-20 for undiscovered
+    } else if (toTerritory.owner === 'player') {
+      baseCost = 4; // Average of 3-5 for player-owned
+    } else {
+      baseCost = 10; // Average of 8-12 for discovered
     }
 
-    return Math.ceil(cost);
+    // Terrain multipliers (harder terrain = more energy)
+    const terrainMultipliers = {
+      'deep_water': 999,  // Can't travel through deep water
+      'water': 2.0,       // Very expensive (swimming/wading)
+      'beach': 1.0,       // Easy
+      'lowland': 1.1,     // Slightly harder
+      'plains': 1.0,      // Easy
+      'scrubland': 1.2,   // Brushy terrain
+      'forest': 1.3,      // Thick vegetation
+      'jungle': 1.4,      // Dense jungle
+      'highland': 1.4,    // Uphill
+      'mountain': 1.5,    // Steep
+      'swamp': 1.6,       // Very difficult
+      'mangrove': 1.3,    // Thick roots
+      'bamboo-forest': 1.2, // Dense but passable
+      'palm-grove': 1.1   // Relatively open
+    };
+    
+    const terrainMult = terrainMultipliers[toTerritory.terrain] || 1.2;
+    baseCost *= terrainMult;
+
+    // Elevation change cost (steeper = harder)
+    if (fromTerritory) {
+      const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
+      baseCost *= (1 + elevationChange * 0.15); // 15% per elevation level
+    }
+
+    // Add slight randomness to undiscovered tiles (15-20 range)
+    if (!toTerritory.discovered) {
+      const variance = 2.5; // +/- 2.5
+      baseCost += (Math.random() * variance * 2) - variance;
+    }
+
+    return Math.max(3, Math.ceil(baseCost)); // Minimum 3 energy
   }
 
   /**
@@ -91,13 +115,11 @@ export class TravelSystem {
   canTravelTo(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): No territory`);
       return false;
     }
 
     // Can't travel through deep water
     if (territory.terrain === 'deep_water') {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Deep water`);
       return false;
     }
 
@@ -107,21 +129,16 @@ export class TravelSystem {
     const ds = Math.abs((-q - r) - (-this.currentPosition.q - this.currentPosition.r));
     const distance = Math.max(dq, dr, ds); // Proper hex distance
     
-    console.log(`🔍 Travel check from (${this.currentPosition.q}, ${this.currentPosition.r}) to (${q}, ${r}): distance=${distance}`);
-    
     if (distance > 1) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Too far (distance ${distance})`);
       return false; // Must be adjacent (hex distance = 1)
     }
 
-    // Check energy cost
+    // Check energy cost using player's new hasEnergy method
     const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (this.player.energy < energyCost) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Not enough energy (need ${energyCost}, have ${this.player.energy})`);
+    if (!this.player.hasEnergy(energyCost)) {
       return false;
     }
 
-    console.log(`✅ Can travel to (${q}, ${r})`);
     return true;
   }
 
@@ -144,8 +161,17 @@ export class TravelSystem {
     this.travelProgress = 0;
     this.travelSpeed = 1000 / travelTime; // Progress per second
 
-    // Deduct energy immediately
-    this.player.energy = Math.max(0, this.player.energy - energyCost);
+    // Deduct energy using player's new energy system
+    const success = this.player.spendEnergy(energyCost);
+    if (!success) {
+      // Shouldn't happen (canTravelTo checks this), but safety check
+      this.isTraveling = false;
+      this.targetPosition = null;
+      return {
+        success: false,
+        reason: 'Not enough energy'
+      };
+    }
 
     // Emit travel start event
     this.emitEvent('travelStart', {
@@ -154,6 +180,8 @@ export class TravelSystem {
       energyCost,
       travelTime
     });
+
+    console.log(`🚶 Started travel to (${q}, ${r}) - Cost: ${energyCost} energy`);
 
     return {
       success: true,
@@ -203,15 +231,24 @@ export class TravelSystem {
     );
 
     if (territory) {
-      // Visit territory
+      // Visit territory (marks as discovered and visited)
       territory.visit();
 
       // Discover adjacent territories (expand fog of war)
-      this.territoryManager.getVisibleTerritories(this.currentPosition, 1);
+      const adjacentTiles = this.territoryManager.getVisibleTerritories(this.currentPosition, 1);
+      adjacentTiles.forEach(tile => {
+        if (!tile.discovered) {
+          tile.discover('player');
+          console.log(`🔍 Discovered adjacent tile at (${tile.position.q}, ${tile.position.r})`);
+        }
+      });
 
       // Check for discoveries
       this.checkForDiscoveries(territory);
     }
+
+    // Update player position
+    this.player.moveTo(this.currentPosition.q, this.currentPosition.r);
 
     // Emit arrival event
     this.emitEvent('travelComplete', {

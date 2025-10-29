@@ -28,12 +28,8 @@ export class CraftingUI {
     this.container.className = 'crafting-modal hidden';
     document.body.appendChild(this.container);
 
-    // Keyboard shortcuts
+    // Only ESC to close (no letter shortcuts that interfere with typing)
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'c' || e.key === 'C') {
-        if (!this.isVisible) this.show();
-        else this.hide();
-      }
       if (e.key === 'Escape' && this.isVisible) {
         this.hide();
       }

@@ -795,6 +795,8 @@ class Player {
   constructor(config = {}) {
     this.name = config.name || "Survivor";
     this.gender = config.gender || "male";
+    this.energy = 100;
+    this.maxEnergy = 100;
     this.stats = {
       health: 100,
       maxHealth: 100,
@@ -802,8 +804,6 @@ class Player {
       // 100 = full, 0 = starving
       thirst: 100,
       // 100 = hydrated, 0 = dehydrated
-      energy: 100,
-      // 100 = well-rested, 0 = exhausted
       sanity: 100
       // 100 = stable, 0 = broken
     };
@@ -820,12 +820,11 @@ class Player {
     this.inventory = new Inventory();
     this.position = config.position || { q: 0, r: 0 };
     this.daysAlive = 0;
-    this.hoursAlive = 0;
     this.reputation = {
       castaways: 0,
       // -100 to +100
-      nativesClan1: 0,
-      nativesClan2: 0,
+      tidalClan: 0,
+      ridgeClan: 0,
       mercenaries: 0,
       island: 0
       // The island's will itself
@@ -844,190 +843,78 @@ class Player {
     this.isAlive = true;
     this.isConscious = true;
     this.isMoving = false;
-    this.lastUpdateTime = Date.now();
-    this.updateInterval = 1e3;
   }
   /**
-   * Update player stats based on time passed
-   * Called by game loop
+   * Spend energy on an action
+   * Returns true if successful, false if not enough energy
+   */
+  spendEnergy(amount) {
+    if (this.energy >= amount) {
+      this.energy -= amount;
+      this.clampStats();
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Check if player has enough energy for an action
+   */
+  hasEnergy(amount) {
+    return this.energy >= amount;
+  }
+  /**
+   * Get energy percentage (0-1)
+   */
+  getEnergyPercentage() {
+    return this.energy / this.maxEnergy;
+  }
+  /**
+   * Restore energy (called at end of turn)
+   */
+  restoreEnergy(amount) {
+    this.energy = Math.min(this.maxEnergy, this.energy + amount);
+  }
+  /**
+   * Calculate max energy based on hunger/thirst
+   * Called when starting a new turn
+   */
+  calculateMaxEnergy() {
+    let baseMax = 100;
+    if (this.stats.hunger < 50) {
+      const hungerPenalty = (50 - this.stats.hunger) * 0.4;
+      baseMax -= hungerPenalty;
+    }
+    if (this.stats.thirst < 50) {
+      const thirstPenalty = (50 - this.stats.thirst) * 0.6;
+      baseMax -= thirstPenalty;
+    }
+    if (this.stats.health < 50) {
+      const healthPenalty = (50 - this.stats.health) * 0.4;
+      baseMax -= healthPenalty;
+    }
+    this.maxEnergy = Math.max(20, Math.floor(baseMax));
+  }
+  /**
+   * Apply night effects (hunger/thirst decay)
+   * Called when player ends turn
+   */
+  applyNightEffects() {
+    this.stats.hunger = Math.max(0, this.stats.hunger - 10);
+    this.stats.thirst = Math.max(0, this.stats.thirst - 15);
+    this.stats.sanity = Math.min(100, this.stats.sanity + 5);
+    this.calculateMaxEnergy();
+    this.checkCriticalStates();
+  }
+  /**
+   * NO MORE TIME-BASED UPDATE
+   * Game is turn-based now, no passive stat decay
    */
   update(deltaTime) {
-    if (!this.isAlive) return;
-    this.hoursAlive += deltaTime / (60 * 60 * 1e3);
-    if (this.hoursAlive >= 24) {
-      this.daysAlive += Math.floor(this.hoursAlive / 24);
-      this.hoursAlive %= 24;
-    }
-    this.applyStatDegradation(deltaTime);
-    this.updateStatusEffects(deltaTime);
-    this.checkCriticalStates();
-    this.applyStatInteractions();
-    this.clampStats();
-  }
-  /**
-   * Natural stat degradation over time
-   */
-  applyStatDegradation(deltaTime) {
-    const hours = deltaTime / (60 * 60 * 1e3);
-    const hungerRate = this.isMoving ? 2.5 : 1.5;
-    this.stats.hunger -= hungerRate * hours;
-    const thirstRate = this.isMoving ? 4 : 2.5;
-    this.stats.thirst -= thirstRate * hours;
-    if (this.isMoving) {
-      this.stats.energy -= 3 * hours;
-    } else if (this.stats.energy < 100) {
-      const regenRate = this.stats.hunger > 50 ? 10 : 5;
-      this.stats.energy += regenRate * hours;
-    }
-    if (this.stats.health < this.stats.maxHealth && this.stats.hunger > 60 && this.stats.energy > 70) {
-      this.stats.health += 2 * hours;
-    }
-    if (this.stats.hunger < 20 || this.stats.thirst < 20) {
-      this.stats.sanity -= 1 * hours;
-    }
-    if (this.stats.energy < 20) {
-      this.stats.sanity -= 0.5 * hours;
+    if (this.statusEffects.length > 0) {
+      this.updateStatusEffects(deltaTime);
     }
   }
-  /**
-   * Status effects system
-   */
-  updateStatusEffects(deltaTime) {
-    this.statusEffects = this.statusEffects.filter((effect) => {
-      effect.duration -= deltaTime;
-      if (effect.duration <= 0) {
-        this.onEffectExpire(effect);
-        return false;
-      }
-      this.applyEffectTick(effect, deltaTime);
-      return true;
-    });
-  }
-  /**
-   * Add a status effect
-   */
-  addStatusEffect(effect) {
-    const existing = this.statusEffects.find((e) => e.id === effect.id);
-    if (existing) {
-      if (effect.stackable) {
-        existing.intensity = (existing.intensity || 1) + (effect.intensity || 1);
-        existing.duration = Math.max(existing.duration, effect.duration);
-      } else {
-        existing.duration = effect.duration;
-      }
-    } else {
-      this.statusEffects.push({
-        id: effect.id,
-        name: effect.name,
-        type: effect.type,
-        // 'buff', 'debuff', 'neutral'
-        duration: effect.duration,
-        intensity: effect.intensity || 1,
-        stackable: effect.stackable || false,
-        effects: effect.effects,
-        icon: effect.icon
-      });
-      this.onEffectApply(effect);
-    }
-  }
-  /**
-   * Remove a status effect
-   */
-  removeStatusEffect(effectId) {
-    const index = this.statusEffects.findIndex((e) => e.id === effectId);
-    if (index !== -1) {
-      const effect = this.statusEffects[index];
-      this.onEffectExpire(effect);
-      this.statusEffects.splice(index, 1);
-    }
-  }
-  /**
-   * Called when effect is first applied
-   */
-  onEffectApply(effect) {
-    console.log(`Status effect applied: ${effect.name}`);
-  }
-  /**
-   * Called every tick while effect is active
-   */
-  applyEffectTick(effect, deltaTime) {
-    const hours = deltaTime / (60 * 60 * 1e3);
-    const intensity = effect.intensity || 1;
-    if (effect.effects) {
-      Object.entries(effect.effects).forEach(([stat, value]) => {
-        if (this.stats[stat] !== void 0) {
-          this.stats[stat] += value * intensity * hours;
-        }
-      });
-    }
-  }
-  /**
-   * Called when effect expires
-   */
-  onEffectExpire(effect) {
-    console.log(`Status effect expired: ${effect.name}`);
-  }
-  /**
-   * Stats influence each other
-   */
-  applyStatInteractions() {
-    if (this.stats.hunger < 30) {
-      const maxEnergyPenalty = (30 - this.stats.hunger) * 2;
-      if (this.stats.energy > 100 - maxEnergyPenalty) {
-        this.stats.energy = 100 - maxEnergyPenalty;
-      }
-    }
-    if (this.stats.thirst < 10) {
-      this.stats.health -= 0.5;
-    }
-    if (this.stats.hunger <= 0) {
-      this.stats.health -= 1;
-    }
-    if (this.stats.sanity < 20) {
-      const penalty = (20 - this.stats.sanity) * 0.1;
-      this.stats.energy -= penalty;
-    }
-  }
-  /**
-   * Check for critical states (unconscious, death)
-   */
-  checkCriticalStates() {
-    if (this.stats.health <= 0) {
-      this.die();
-      return;
-    }
-    if (this.stats.energy <= 0 || this.stats.health <= 10) {
-      if (this.isConscious) {
-        this.becomeUnconscious();
-      }
-    } else if (!this.isConscious && this.stats.energy > 20 && this.stats.health > 20) {
-      this.regainConsciousness();
-    }
-  }
-  /**
-   * Player becomes unconscious
-   */
-  becomeUnconscious() {
-    this.isConscious = false;
-    this.isMoving = false;
-    console.log("Player has become unconscious!");
-  }
-  /**
-   * Player regains consciousness
-   */
-  regainConsciousness() {
-    this.isConscious = true;
-    console.log("Player has regained consciousness!");
-  }
-  /**
-   * Player death
-   */
-  die() {
-    this.isAlive = false;
-    this.isConscious = false;
-    this.isMoving = false;
-    console.log("Player has died!");
-  }
+  // ===== NEW TURN-BASED SUPPORT METHODS =====
   /**
    * Consume an item (food, water, medicine)
    */
@@ -1043,9 +930,6 @@ class Player {
           console.log(`${stat}: ${value > 0 ? "+" : ""}${value}`);
         }
       });
-    }
-    if (item.statusEffect) {
-      this.addStatusEffect(item.statusEffect);
     }
     this.clampStats();
     return true;
@@ -1071,7 +955,7 @@ class Player {
     return result;
   }
   /**
-   * Get total bonuses from equipment and status effects
+   * Get total bonuses from equipment
    */
   getTotalBonuses() {
     const bonuses = {
@@ -1093,15 +977,6 @@ class Player {
         });
       }
     });
-    this.statusEffects.forEach((effect) => {
-      if (effect.effects) {
-        Object.entries(effect.effects).forEach(([key, value]) => {
-          if (bonuses[key] !== void 0) {
-            bonuses[key] += value * (effect.intensity || 1);
-          }
-        });
-      }
-    });
     return bonuses;
   }
   /**
@@ -1112,11 +987,11 @@ class Player {
     const bonuses = this.getTotalBonuses();
     const bonus = bonuses[skillName] || 0;
     let penalty = 0;
-    if (this.stats.energy < 30) {
-      penalty = (30 - this.stats.energy) * 0.5;
+    if (this.energy < 30) {
+      penalty = (30 - this.energy) * 0.3;
     }
     if (this.stats.hunger < 30) {
-      penalty += (30 - this.stats.hunger) * 0.3;
+      penalty += (30 - this.stats.hunger) * 0.2;
     }
     return Math.max(0, base + bonus - penalty);
   }
@@ -1163,42 +1038,11 @@ class Player {
     return { path: maxPath, value: maxValue };
   }
   /**
-   * Perform an action that costs energy
-   */
-  performAction(energyCost, onSuccess, onFailure) {
-    if (this.stats.energy < energyCost) {
-      console.warn("Not enough energy to perform action");
-      if (onFailure) onFailure();
-      return false;
-    }
-    this.stats.energy -= energyCost;
-    if (onSuccess) onSuccess();
-    return true;
-  }
-  /**
-   * Move to a new position
+   * Move to a new position (now handled by travel system)
    */
   moveTo(q, r) {
-    const distance = Math.abs(q - this.position.q) + Math.abs(r - this.position.r);
-    const energyCost = distance * 2;
-    return this.performAction(energyCost, () => {
-      this.position = { q, r };
-      console.log(`Moved to (${q}, ${r})`);
-    }, () => {
-      console.log("Too exhausted to move");
-    });
-  }
-  /**
-   * Rest to recover energy
-   */
-  rest(hours) {
-    const energyRecovered = hours * 15;
-    this.stats.energy = Math.min(100, this.stats.energy + energyRecovered);
-    console.log(`Rested for ${hours} hours. Energy: +${energyRecovered}`);
-    if (this.stats.sanity < 100) {
-      const sanityRecovered = hours * 5;
-      this.stats.sanity = Math.min(100, this.stats.sanity + sanityRecovered);
-    }
+    this.position = { q, r };
+    console.log(`Moved to (${q}, ${r})`);
   }
   /**
    * Get current state description (for UI/narrative)
@@ -1212,8 +1056,8 @@ class Player {
     else if (this.stats.hunger < 50) descriptions.push("hungry");
     if (this.stats.thirst < 20) descriptions.push("severely dehydrated");
     else if (this.stats.thirst < 50) descriptions.push("thirsty");
-    if (this.stats.energy < 20) descriptions.push("exhausted");
-    else if (this.stats.energy < 50) descriptions.push("tired");
+    if (this.energy < 20) descriptions.push("exhausted");
+    else if (this.energy < 50) descriptions.push("tired");
     if (this.stats.sanity < 20) descriptions.push("mentally broken");
     else if (this.stats.sanity < 50) descriptions.push("stressed");
     return descriptions.length > 0 ? descriptions.join(", ") : "in good condition";
@@ -1225,8 +1069,8 @@ class Player {
     this.stats.health = Math.max(0, Math.min(this.stats.maxHealth, this.stats.health));
     this.stats.hunger = Math.max(0, Math.min(100, this.stats.hunger));
     this.stats.thirst = Math.max(0, Math.min(100, this.stats.thirst));
-    this.stats.energy = Math.max(0, Math.min(100, this.stats.energy));
     this.stats.sanity = Math.max(0, Math.min(100, this.stats.sanity));
+    this.energy = Math.max(0, Math.min(this.maxEnergy, this.energy));
   }
   /**
    * Serialize player state for saving
@@ -1236,17 +1080,16 @@ class Player {
       name: this.name,
       gender: this.gender,
       stats: { ...this.stats },
-      statusEffects: [...this.statusEffects],
+      energy: this.energy,
+      maxEnergy: this.maxEnergy,
       skills: { ...this.skills },
       inventory: this.inventory.toJSON(),
       position: { ...this.position },
       daysAlive: this.daysAlive,
-      hoursAlive: this.hoursAlive,
       reputation: { ...this.reputation },
       moralBackbone: { ...this.moralBackbone },
       perks: [...this.perks],
-      isAlive: this.isAlive,
-      isConscious: this.isConscious
+      isAlive: this.isAlive
     };
   }
   /**
@@ -1255,17 +1098,16 @@ class Player {
   static fromJSON(data) {
     const player2 = new Player({ name: data.name, gender: data.gender });
     Object.assign(player2.stats, data.stats);
-    player2.statusEffects = data.statusEffects || [];
+    player2.energy = data.energy ?? player2.energy;
+    player2.maxEnergy = data.maxEnergy ?? player2.maxEnergy;
     Object.assign(player2.skills, data.skills);
     player2.inventory = Inventory.fromJSON(data.inventory);
     player2.position = data.position;
     player2.daysAlive = data.daysAlive;
-    player2.hoursAlive = data.hoursAlive;
     Object.assign(player2.reputation, data.reputation);
     Object.assign(player2.moralBackbone, data.moralBackbone);
     player2.perks = data.perks || [];
     player2.isAlive = data.isAlive;
-    player2.isConscious = data.isConscious;
     return player2;
   }
 }
@@ -1885,6 +1727,210 @@ class ItemDatabase {
         usable: true,
         value: 15,
         rarity: "common"
+      },
+      // ===== NEW BIOME RESOURCES =====
+      {
+        id: "bamboo",
+        name: "Bamboo",
+        description: "Fast-growing bamboo pole. Lightweight and strong.",
+        type: "material",
+        category: "wood",
+        icon: "items/bamboo.png",
+        stackable: true,
+        maxStack: 50,
+        weight: 0.3,
+        value: 2,
+        rarity: "common"
+      },
+      {
+        id: "bamboo_shoot",
+        name: "Bamboo Shoot",
+        description: "Edible bamboo shoot. Crunchy and nutritious.",
+        type: "consumable",
+        category: "food",
+        icon: "items/bamboo_shoot.png",
+        stackable: true,
+        maxStack: 20,
+        weight: 0.2,
+        consumable: true,
+        effects: { hunger: 8 },
+        value: 2,
+        rarity: "common"
+      },
+      {
+        id: "palm_frond",
+        name: "Palm Frond",
+        description: "Large palm leaf. Good for roofing and weaving.",
+        type: "material",
+        category: "fiber",
+        icon: "items/palm_frond.png",
+        stackable: true,
+        maxStack: 30,
+        weight: 0.2,
+        value: 1,
+        rarity: "common"
+      },
+      {
+        id: "dates",
+        name: "Dates",
+        description: "Sweet dried dates. Very filling.",
+        type: "consumable",
+        category: "food",
+        icon: "items/dates.png",
+        stackable: true,
+        maxStack: 20,
+        weight: 0.1,
+        consumable: true,
+        effects: { hunger: 12, energy: 5 },
+        value: 3,
+        rarity: "common"
+      },
+      {
+        id: "mangrove_wood",
+        name: "Mangrove Wood",
+        description: "Dense, water-resistant wood from mangrove trees.",
+        type: "material",
+        category: "wood",
+        icon: "items/mangrove_wood.png",
+        stackable: true,
+        maxStack: 40,
+        weight: 0.7,
+        value: 3,
+        rarity: "uncommon"
+      },
+      {
+        id: "oyster",
+        name: "Oyster",
+        description: "Fresh oyster. Can be eaten raw or cooked.",
+        type: "consumable",
+        category: "food",
+        icon: "items/oyster.png",
+        stackable: true,
+        maxStack: 15,
+        weight: 0.3,
+        consumable: true,
+        effects: { hunger: 6, thirst: -2 },
+        value: 4,
+        rarity: "common"
+      },
+      {
+        id: "medicinal_plant",
+        name: "Medicinal Plant",
+        description: "A rare plant with healing properties.",
+        type: "material",
+        category: "herb",
+        icon: "items/medicinal_plant.png",
+        stackable: true,
+        maxStack: 10,
+        weight: 0.1,
+        value: 15,
+        rarity: "uncommon"
+      },
+      {
+        id: "cactus_fruit",
+        name: "Cactus Fruit",
+        description: "Sweet fruit from a cactus. Hydrating.",
+        type: "consumable",
+        category: "food",
+        icon: "items/cactus_fruit.png",
+        stackable: true,
+        maxStack: 15,
+        weight: 0.2,
+        consumable: true,
+        effects: { hunger: 7, thirst: 10 },
+        value: 3,
+        rarity: "common"
+      },
+      {
+        id: "desert_herb",
+        name: "Desert Herb",
+        description: "Hardy herb that survives in arid climates.",
+        type: "material",
+        category: "herb",
+        icon: "items/desert_herb.png",
+        stackable: true,
+        maxStack: 20,
+        weight: 0.05,
+        value: 2,
+        rarity: "common"
+      },
+      // ===== SHIPWRECK / RUINS LOOT =====
+      {
+        id: "ancient_coin",
+        name: "Ancient Coin",
+        description: "A mysterious coin from a lost civilization.",
+        type: "treasure",
+        category: "artifact",
+        icon: "items/coin.png",
+        stackable: true,
+        maxStack: 99,
+        weight: 0.01,
+        value: 25,
+        rarity: "rare"
+      },
+      {
+        id: "ship_log",
+        name: "Ship's Log",
+        description: "A weathered logbook. Contains navigation notes.",
+        type: "quest",
+        category: "document",
+        icon: "items/book.png",
+        stackable: false,
+        weight: 0.5,
+        value: 10,
+        rarity: "uncommon"
+      },
+      {
+        id: "rusted_compass",
+        name: "Rusted Compass",
+        description: "An old compass. Still works, mostly.",
+        type: "tool",
+        category: "navigation",
+        icon: "items/compass.png",
+        stackable: false,
+        weight: 0.3,
+        equippable: true,
+        effects: { navigation: 2 },
+        value: 30,
+        rarity: "uncommon"
+      },
+      {
+        id: "ancient_tablet",
+        name: "Ancient Tablet",
+        description: "Stone tablet with mysterious inscriptions.",
+        type: "treasure",
+        category: "artifact",
+        icon: "items/tablet.png",
+        stackable: false,
+        weight: 3,
+        value: 100,
+        rarity: "rare"
+      },
+      {
+        id: "crystal_shard",
+        name: "Crystal Shard",
+        description: "A glowing crystal shard. Pulses with energy.",
+        type: "treasure",
+        category: "artifact",
+        icon: "items/crystal.png",
+        stackable: true,
+        maxStack: 20,
+        weight: 0.2,
+        value: 50,
+        rarity: "epic"
+      },
+      {
+        id: "gold_nugget",
+        name: "Gold Nugget",
+        description: "Pure gold. Valuable for trade.",
+        type: "treasure",
+        category: "metal",
+        icon: "items/gold.png",
+        stackable: true,
+        maxStack: 50,
+        weight: 0.5,
+        value: 40,
+        rarity: "rare"
       }
     ];
   }
@@ -2413,12 +2459,8 @@ class GameState {
       // NPCs
       time: {
         day: 1,
-        hour: 8,
-        // 0-23
-        minute: 0,
-        season: "summer",
-        timeScale: 60
-        // 60 game minutes per real second (adjustable)
+        // Removed: hour, minute, timeScale - now pure turn-based
+        season: "summer"
       },
       flags: {
         phase: 1,
@@ -2491,6 +2533,10 @@ class GameState {
   /**
    * Game loop - updates time, stats, and all systems
    */
+  /**
+   * Start game loop (simplified for turn-based system)
+   * Only tracks play time and handles auto-saves
+   */
   startGameLoop() {
     this.gameLoopInterval = setInterval(() => {
       if (this.isPaused) return;
@@ -2498,10 +2544,6 @@ class GameState {
       const deltaTime = now - this.state.meta.lastTick;
       this.state.meta.lastTick = now;
       this.state.meta.playTime += deltaTime / 1e3;
-      this.advanceTime(deltaTime);
-      if (this.player) {
-        this.player.update(deltaTime);
-      }
       if (this.resourceManager) {
         this.resourceManager.update(deltaTime);
       }
@@ -2531,24 +2573,37 @@ class GameState {
     }
   }
   /**
-   * Advance in-game time
+   * Advance to next day (end turn)
+   * Called when player chooses to end their turn
    */
-  advanceTime(deltaMs) {
-    const gameMinutes = deltaMs / 1e3 * (this.state.time.timeScale / 60);
-    this.state.time.minute += gameMinutes;
-    if (this.state.time.minute >= 60) {
-      const hoursToAdd = Math.floor(this.state.time.minute / 60);
-      this.state.time.minute = this.state.time.minute % 60;
-      this.state.time.hour += hoursToAdd;
-      if (this.state.time.hour >= 24) {
-        const daysToAdd = Math.floor(this.state.time.hour / 24);
-        this.state.time.hour = this.state.time.hour % 24;
-        this.state.time.day += daysToAdd;
-        this.emit("newDay", { day: this.state.time.day });
-      }
-      this.emit("newHour", { hour: this.state.time.hour, day: this.state.time.day });
+  endTurn(recoveryModifier = 1) {
+    this.state.time.day += 1;
+    let recoveryAmount = 0;
+    if (this.player) {
+      recoveryAmount = Math.floor(this.player.maxEnergy * recoveryModifier);
+      this.player.restoreEnergy(recoveryAmount);
+      this.player.applyNightEffects();
+      console.log(`🌙 Night passed. Day ${this.state.time.day} begins.`);
+      console.log(`⚡ Energy: ${this.player.energy}/${this.player.maxEnergy} (recovered ${recoveryAmount})`);
     }
-    this.emit("timeAdvanced", this.state.time);
+    if (this.resourceManager) {
+      this.resourceManager.regenerateDaily();
+    }
+    this.emit("newDay", {
+      day: this.state.time.day,
+      energyRecovered: recoveryAmount,
+      player: this.player
+    });
+    return {
+      day: this.state.time.day,
+      energyRecovered: recoveryAmount
+    };
+  }
+  /**
+   * Get current day number
+   */
+  getCurrentDay() {
+    return this.state.time.day;
   }
   /**
    * Set time scale (how fast time passes)
@@ -6161,10 +6216,7 @@ class StoryIntro {
       skipBtn.addEventListener("click", () => this.complete());
     }
     this.keyHandler = (e) => {
-      if (e.key === " " || e.key === "Enter") {
-        e.preventDefault();
-        this.advance();
-      } else if (e.key === "Escape") {
+      if (e.key === "Escape") {
         this.complete();
       }
     };
@@ -6181,17 +6233,42 @@ class MapRenderer {
     this.scale = 1;
     this.fogOfWarEnabled = false;
     this.terrainColors = {
+      // WATER/COAST
       "sea": "#1e3a8a",
-      "beach": "#fde047",
+      // Deep blue
+      "beach": "#f4e4c1",
+      // Softer sand/beige
+      "cliff": "#57534e",
+      // Warm grey
       "river": "#3b82f6",
-      "savanna": "#a3e635",
+      // Bright blue
+      // LOWLANDS
+      "savanna": "#d4b896",
+      // Golden tan
       "forest": "#22c55e",
+      // Green
       "rainforest": "#15803d",
+      // Dark green
+      "mangrove": "#166534",
+      // Dark swampy green
+      "palm-grove": "#84cc16",
+      // Bright tropical green
+      // HILLS
       "dry-hill": "#a8a29e",
+      // Tan/grey
       "jungle-hill": "#65a30d",
+      // Olive green
       "cloud-forest": "#6ee7b7",
+      // Mint/teal
+      "bamboo-forest": "#86efac",
+      // Light fresh green
+      "scrubland": "#d6d3d1",
+      // Dusty grey-brown
+      // MOUNTAINS
       "rocky-peak": "#78716c",
-      "misty-peak": "#cbd5e1"
+      // Dark grey
+      "misty-peak": "#e2e8f0"
+      // Lighter grey/white
     };
     this.setupCanvas();
   }
@@ -6372,6 +6449,90 @@ class MapRenderer {
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
         this.ctx.fillText("✦", 0, 0);
+        break;
+      case "shipwreck":
+        this.ctx.fillStyle = "#92400e";
+        this.ctx.strokeStyle = "#000";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fbbf24";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("⚓", 0, 0);
+        break;
+      case "waterfall":
+        this.ctx.fillStyle = "#3b82f6";
+        this.ctx.strokeStyle = "#1e3a8a";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("≋", 0, 0);
+        break;
+      case "hot-spring":
+        this.ctx.fillStyle = "#f97316";
+        this.ctx.strokeStyle = "#ea580c";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("♨", 0, 0);
+        break;
+      case "cave":
+        this.ctx.fillStyle = "#1c1917";
+        this.ctx.strokeStyle = "#78716c";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#a8a29e";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("◐", 0, 0);
+        break;
+      case "harbor":
+        this.ctx.fillStyle = "#0ea5e9";
+        this.ctx.strokeStyle = "#0284c7";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#fff";
+        this.ctx.font = "bold 12px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("⚓", 0, 0);
+        break;
+      case "ruins":
+        this.ctx.fillStyle = "#78716c";
+        this.ctx.strokeStyle = "#44403c";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 9, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = "#d6d3d1";
+        this.ctx.font = "bold 14px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("🏛", 0, 0);
         break;
     }
     this.ctx.restore();
@@ -6722,16 +6883,7 @@ class GameView {
       this.showGameMenu();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "i" || e.key === "I") {
-        e.preventDefault();
-        window.game.inventoryUI?.toggle();
-      } else if (e.key === "c" || e.key === "C") {
-        e.preventDefault();
-        window.game.craftingUI?.toggle();
-      } else if (e.key === "k" || e.key === "K") {
-        e.preventDefault();
-        this.showSkillsMenu();
-      } else if (e.key === "Escape") {
+      if (e.key === "Escape") {
         window.game.inventoryUI?.hide();
         window.game.craftingUI?.hide();
       }
@@ -6948,25 +7100,55 @@ class GameView {
     const hex = this.renderer.screenToHex(event.clientX, event.clientY);
     const tile = this.mapData.tiles.get(`${hex.q},${hex.r}`);
     if (!tile) return;
-    const nodes = this.resourceNodeManager.getNodesAt(hex.q, hex.r);
-    const node = nodes && nodes.length > 0 ? nodes[0] : null;
-    if (node) {
-      const distance = Math.abs(hex.q - this.player.position.q) + Math.abs(hex.r - this.player.position.r) + Math.abs(-hex.q - hex.r - (-this.player.position.q - this.player.position.r));
-      if (distance === 0 || distance === 2) {
-        window.game.gatheringUI?.show(node);
-        return;
+    const dq = Math.abs(hex.q - this.player.position.q);
+    const dr = Math.abs(hex.r - this.player.position.r);
+    const ds = Math.abs(-hex.q - hex.r - (-this.player.position.q - this.player.position.r));
+    const distance = Math.max(dq, dr, ds);
+    if (distance === 0) {
+      this.showTileActions(tile, hex);
+      return;
+    }
+    const territory = this.territoryManager.getTerritory(hex.q, hex.r);
+    const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r) || [];
+    const hasPOIs = nodes.length > 0 || territory?.hasNPC || territory?.hasEvent;
+    if (distance === 1 && hasPOIs) {
+      if (window.game?.tileInteractionUI) {
+        window.game.tileInteractionUI.show(hex, territory);
       } else {
-        this.addLogEntry("❌ Too far away. Move closer to gather.");
-        return;
+        this.addLogEntry("🔍 Something interesting here. Move closer to interact.");
       }
+      return;
     }
     if (!tile.isPassable) {
       this.addLogEntry("❌ You can't travel there.");
       return;
     }
+    if (distance > 1) {
+      this.addLogEntry("❌ Too far to travel in one move.");
+      return;
+    }
     const result = this.travelSystem.startTravel(hex.q, hex.r);
     if (!result.success) {
       this.addLogEntry(`❌ ${result.reason}`);
+    }
+  }
+  /**
+   * Show available actions for current tile
+   */
+  showTileActions(tile, hex) {
+    const territory = this.territoryManager.getTerritory(hex.q, hex.r);
+    if (window.game?.tileInteractionUI) {
+      window.game.tileInteractionUI.show(hex, territory);
+    } else {
+      const nodes = this.resourceNodeManager.getNodesAt(hex.q, hex.r);
+      let message = `📍 Current Location: ${tile.terrain}`;
+      if (nodes && nodes.length > 0) {
+        message += ` | 🌲 Resources available`;
+      }
+      if (territory && territory.owner) {
+        message += ` | 🏴 Controlled by ${territory.owner}`;
+      }
+      this.addLogEntry(message);
     }
   }
   triggerTerrainEvent(tile) {
@@ -7287,14 +7469,6 @@ class SaveManager {
       if (e.key === "Escape") {
         e.preventDefault();
         this.hide();
-      }
-      if (e.key === "F5") {
-        e.preventDefault();
-        this.handleQuickSave();
-      }
-      if (e.key === "F9") {
-        e.preventDefault();
-        this.handleQuickLoad();
       }
     };
     document.addEventListener("keydown", this.keyHandler);
@@ -8310,6 +8484,8 @@ class MapEngine {
     console.log(`🏝️  Ensured single connected landmass`);
     this.markBeaches();
     console.log(`🏖️  Marked beach tiles`);
+    this.markCliffs();
+    console.log(`🏔️  Marked cliff coastlines`);
     this.carveRiver();
     console.log(`🏞️  Carved rivers from mountains to sea`);
     this.generateMoisture();
@@ -8481,6 +8657,23 @@ class MapEngine {
     }
   }
   // ========================================
+  // STEP 3.5: CLIFFS
+  // ========================================
+  markCliffs() {
+    let cliffCount = 0;
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== "beach") continue;
+      if (tile.elevation >= 0.6) {
+        tile.terrain = "cliff";
+        tile.isPassable = true;
+        tile.canLandFromSea = false;
+        tile.isCliff = true;
+        cliffCount++;
+      }
+    }
+    console.log(`🏔️  Converted ${cliffCount} high-elevation beaches to cliffs`);
+  }
+  // ========================================
   // STEP 4: RIVER CARVING
   // ========================================
   carveRiver() {
@@ -8561,19 +8754,38 @@ class MapEngine {
   // ========================================
   assignBiomes() {
     for (const [key, tile] of this.tiles) {
-      if (tile.terrain === "sea" || tile.terrain === "beach" || tile.terrain === "river") {
+      if (tile.terrain === "sea" || tile.terrain === "beach" || tile.terrain === "cliff" || tile.terrain === "river") {
         continue;
       }
       const elev = tile.elevation;
       const moist = tile.moisture;
+      const distToWater = tile.distanceToWater || 999;
+      if (elev < 0.4 && moist > 0.7 && distToWater <= 2) {
+        tile.terrain = "mangrove";
+        continue;
+      }
+      if (elev < 0.45 && moist > 0.6 && distToWater === 1) {
+        tile.terrain = "palm-grove";
+        continue;
+      }
       if (elev < 0.5) {
         if (moist < 0.3) tile.terrain = "savanna";
         else if (moist < 0.6) tile.terrain = "forest";
         else tile.terrain = "rainforest";
       } else if (elev < 0.7) {
-        if (moist < 0.4) tile.terrain = "dry-hill";
-        else if (moist < 0.7) tile.terrain = "jungle-hill";
-        else tile.terrain = "cloud-forest";
+        if (moist < 0.35) {
+          tile.terrain = "scrubland";
+        } else if (moist < 0.5) {
+          tile.terrain = "dry-hill";
+        } else if (moist < 0.75) {
+          if (moist > 0.65 && elev >= 0.45 && elev < 0.6) {
+            tile.terrain = "bamboo-forest";
+          } else {
+            tile.terrain = "jungle-hill";
+          }
+        } else {
+          tile.terrain = "cloud-forest";
+        }
       } else {
         if (moist < 0.5) tile.terrain = "rocky-peak";
         else tile.terrain = "misty-peak";
@@ -8594,11 +8806,16 @@ class MapEngine {
       "jungle-hill",
       "cloud-forest",
       "rocky-peak",
-      "misty-peak"
+      "misty-peak",
+      // New biomes (optional but encouraged)
+      "mangrove",
+      "palm-grove",
+      "bamboo-forest",
+      "scrubland"
     ];
     const biomeCounts = {};
     for (const [key, tile] of this.tiles) {
-      if (tile.isLand && tile.terrain !== "beach" && tile.terrain !== "river") {
+      if (tile.isLand && tile.terrain !== "beach" && tile.terrain !== "cliff" && tile.terrain !== "river") {
         biomeCounts[tile.terrain] = (biomeCounts[tile.terrain] || 0) + 1;
       }
     }
@@ -8608,7 +8825,7 @@ class MapEngine {
       for (const biome of missingBiomes) {
         const candidates = [];
         for (const [key, tile] of this.tiles) {
-          if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "river") continue;
+          if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "cliff" || tile.terrain === "river") continue;
           const suitability = this.getBiomeSuitability(tile, biome);
           if (suitability > 0.5) {
             candidates.push({ tile, suitability });
@@ -8628,12 +8845,17 @@ class MapEngine {
   getBiomeSuitability(tile, biome) {
     const elev = tile.elevation;
     const moist = tile.moisture;
+    const distToWater = tile.distanceToWater || 999;
     const biomeRanges = {
       "savanna": { elevMin: 0.35, elevMax: 0.5, moistMin: 0, moistMax: 0.3 },
       "forest": { elevMin: 0.35, elevMax: 0.5, moistMin: 0.3, moistMax: 0.6 },
       "rainforest": { elevMin: 0.35, elevMax: 0.5, moistMin: 0.6, moistMax: 1 },
-      "dry-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0, moistMax: 0.4 },
-      "jungle-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0.4, moistMax: 0.7 },
+      "mangrove": { elevMin: 0.25, elevMax: 0.4, moistMin: 0.7, moistMax: 1, maxDistToWater: 2 },
+      "palm-grove": { elevMin: 0.25, elevMax: 0.45, moistMin: 0.6, moistMax: 1, maxDistToWater: 1 },
+      "scrubland": { elevMin: 0.35, elevMax: 0.55, moistMin: 0, moistMax: 0.35 },
+      "dry-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0, moistMax: 0.5 },
+      "jungle-hill": { elevMin: 0.5, elevMax: 0.7, moistMin: 0.4, moistMax: 0.75 },
+      "bamboo-forest": { elevMin: 0.45, elevMax: 0.6, moistMin: 0.65, moistMax: 1 },
       "cloud-forest": { elevMin: 0.5, elevMax: 0.7, moistMin: 0.7, moistMax: 1 },
       "rocky-peak": { elevMin: 0.7, elevMax: 1, moistMin: 0, moistMax: 0.5 },
       "misty-peak": { elevMin: 0.7, elevMax: 1, moistMin: 0.5, moistMax: 1 }
@@ -8642,7 +8864,11 @@ class MapEngine {
     if (!range) return 0;
     const elevScore = elev >= range.elevMin && elev <= range.elevMax ? 1 : 0;
     const moistScore = moist >= range.moistMin && moist <= range.moistMax ? 1 : 0;
-    return (elevScore + moistScore) / 2;
+    let waterScore = 1;
+    if (range.maxDistToWater !== void 0) {
+      waterScore = distToWater <= range.maxDistToWater ? 1 : 0;
+    }
+    return (elevScore + moistScore + waterScore) / 3;
   }
   // ========================================
   // STEP 7: SMOOTHING
@@ -8651,7 +8877,7 @@ class MapEngine {
     for (let pass = 0; pass < passes; pass++) {
       const changes = [];
       for (const [key, tile] of this.tiles) {
-        if (!tile.isLand || tile.isRiver || tile.terrain === "beach") continue;
+        if (!tile.isLand || tile.isRiver || tile.terrain === "beach" || tile.terrain === "cliff") continue;
         const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
         const neighborTerrains = neighbors.map((n) => this.getTile(n.q, n.r)).filter((n) => n && n.isLand).map((n) => n.terrain);
         const counts = {};
@@ -8722,7 +8948,15 @@ class MapEngine {
       ridgeVillage: null,
       mercenaryCompound: null,
       castawayBeach: null,
-      sacredSites: []
+      sacredSites: [],
+      shipwrecks: [],
+      landmarks: {
+        waterfall: null,
+        hotSpring: null,
+        caves: [],
+        harbor: null
+      },
+      ruins: []
     };
     const minDistanceBetweenBases = Math.floor(this.config.radius * 0.6);
     const placedLocations = [];
@@ -8743,14 +8977,18 @@ class MapEngine {
       placedLocations.push(this.strategicLocations.mercenaryCompound.tile);
     }
     this.strategicLocations.sacredSites = this.placeSacredSites();
+    this.strategicLocations.shipwrecks = this.placeShipwrecks();
+    this.placeNaturalLandmarks();
+    this.strategicLocations.ruins = this.placeAncientRuins();
     this.markStrategicTiles();
-    console.log("📍 Strategic Locations:", {
-      castawayBeach: this.strategicLocations.castawayBeach?.tile ? `(${this.strategicLocations.castawayBeach.tile.q}, ${this.strategicLocations.castawayBeach.tile.r})` : "none",
-      tidalVillage: this.strategicLocations.tidalVillage?.tile ? `(${this.strategicLocations.tidalVillage.tile.q}, ${this.strategicLocations.tidalVillage.tile.r})` : "none",
-      ridgeVillage: this.strategicLocations.ridgeVillage?.tile ? `(${this.strategicLocations.ridgeVillage.tile.q}, ${this.strategicLocations.ridgeVillage.tile.r})` : "none",
-      mercenaryCompound: this.strategicLocations.mercenaryCompound?.tile ? `(${this.strategicLocations.mercenaryCompound.tile.q}, ${this.strategicLocations.mercenaryCompound.tile.r})` : "none",
+    const totalPOIs = (this.strategicLocations.castawayBeach ? 1 : 0) + (this.strategicLocations.tidalVillage ? 1 : 0) + (this.strategicLocations.ridgeVillage ? 1 : 0) + (this.strategicLocations.mercenaryCompound ? 1 : 0) + this.strategicLocations.sacredSites.length + this.strategicLocations.shipwrecks.length + (this.strategicLocations.landmarks.waterfall ? 1 : 0) + (this.strategicLocations.landmarks.hotSpring ? 1 : 0) + this.strategicLocations.landmarks.caves.length + (this.strategicLocations.landmarks.harbor ? 1 : 0) + this.strategicLocations.ruins.length;
+    console.log(`📍 POI Summary: ${totalPOIs} total locations`, {
+      villages: 2,
+      compounds: 1,
       sacredSites: this.strategicLocations.sacredSites.length,
-      minDistance: minDistanceBetweenBases
+      shipwrecks: this.strategicLocations.shipwrecks.length,
+      landmarks: (this.strategicLocations.landmarks.waterfall ? 1 : 0) + (this.strategicLocations.landmarks.hotSpring ? 1 : 0) + this.strategicLocations.landmarks.caves.length + (this.strategicLocations.landmarks.harbor ? 1 : 0),
+      ruins: this.strategicLocations.ruins.length
     });
     if (this.strategicLocations.castawayBeach && this.strategicLocations.tidalVillage) {
       const dist = this.hexGrid.distance(
@@ -8770,6 +9008,7 @@ class MapEngine {
     const candidates = [];
     for (const [key, tile] of this.tiles) {
       if (tile.terrain !== "beach") continue;
+      if (tile.isCliff) continue;
       const southScore = Math.max(0, tile.r) / this.config.radius;
       const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
       const landNeighbors = neighbors.filter((n) => {
@@ -8950,7 +9189,7 @@ class MapEngine {
     const numSites = 3 + Math.floor(this.rng.next() * 3);
     const candidates = [];
     for (const [key, tile] of this.tiles) {
-      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "sea") continue;
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "cliff" || tile.terrain === "sea") continue;
       let score = 0;
       if (tile.terrain === "misty-peak" || tile.terrain === "rocky-peak") {
         score += tile.elevation * 2;
@@ -8989,6 +9228,249 @@ class MapEngine {
     return sacredSites;
   }
   /**
+   * Place shipwrecks (2-3 locations)
+   * Requirements: Beach/coast, remote, salvageable loot
+   */
+  placeShipwrecks() {
+    const numWrecks = 2 + Math.floor(this.rng.next() * 2);
+    const wrecks = [];
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== "beach") continue;
+      const distFromCenter = this.hexGrid.distance(0, 0, tile.q, tile.r);
+      const remoteness = distFromCenter / this.config.radius;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      const nearSea = neighbors.some((n) => {
+        const neighbor = this.getTile(n.q, n.r);
+        return neighbor && neighbor.terrain === "sea";
+      });
+      if (!nearSea) continue;
+      const score = remoteness * 0.7 + this.rng.next() * 0.3;
+      candidates.push({ tile, score });
+    }
+    if (candidates.length === 0) {
+      console.warn("⚠️  No suitable shipwreck locations found");
+      return wrecks;
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < Math.min(numWrecks, candidates.length); i++) {
+      const candidate = candidates[i];
+      const tooClose = wrecks.some(
+        (w) => this.hexGrid.distance(w.tile.q, w.tile.r, candidate.tile.q, candidate.tile.r) < 8
+      );
+      if (!tooClose) {
+        const wreckNames = ["Broken Promise", "Sea Maiden", "Fortune's Folly", "Last Hope", "Wayward Soul"];
+        const lootQuality = this.rng.next();
+        wrecks.push({
+          name: `Shipwreck: ${wreckNames[i % wreckNames.length]}`,
+          type: "shipwreck",
+          tile: candidate.tile,
+          description: "The remains of a ship that wasn't so lucky. May contain salvage.",
+          lootQuality: lootQuality > 0.7 ? "rich" : lootQuality > 0.3 ? "normal" : "poor",
+          looted: false
+        });
+      }
+    }
+    console.log(`⚓ Placed ${wrecks.length} shipwrecks on remote beaches`);
+    return wrecks;
+  }
+  /**
+   * Place natural landmarks (waterfalls, caves, hot springs, harbors)
+   */
+  placeNaturalLandmarks() {
+    this.strategicLocations.landmarks.waterfall = this.findWaterfall();
+    this.strategicLocations.landmarks.hotSpring = this.findHotSpring();
+    this.strategicLocations.landmarks.caves = this.findCaves(2);
+    this.strategicLocations.landmarks.harbor = this.findNaturalHarbor();
+    const landmarkCount = (this.strategicLocations.landmarks.waterfall ? 1 : 0) + (this.strategicLocations.landmarks.hotSpring ? 1 : 0) + this.strategicLocations.landmarks.caves.length + (this.strategicLocations.landmarks.harbor ? 1 : 0);
+    console.log(`🗻 Placed ${landmarkCount} natural landmarks`);
+  }
+  /**
+   * Find a waterfall location (river + elevation drop)
+   */
+  findWaterfall() {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== "river") continue;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      let maxElevDiff = 0;
+      for (const n of neighbors) {
+        const neighbor = this.getTile(n.q, n.r);
+        if (!neighbor || !neighbor.isLand) continue;
+        const elevDiff = Math.abs(tile.elevation - neighbor.elevation);
+        maxElevDiff = Math.max(maxElevDiff, elevDiff);
+      }
+      if (maxElevDiff > 0.15) {
+        candidates.push({ tile, elevDiff: maxElevDiff });
+      }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.elevDiff - a.elevDiff);
+    return {
+      name: "Cascade Falls",
+      type: "waterfall",
+      tile: candidates[0].tile,
+      description: "A beautiful waterfall cascading down the mountainside. Fresh water and a peaceful resting spot."
+    };
+  }
+  /**
+   * Find hot spring (rare, high elevation + high moisture)
+   */
+  findHotSpring() {
+    if (this.rng.next() > 0.3) return null;
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "cliff") continue;
+      if (tile.elevation >= 0.6 && tile.moisture >= 0.7) {
+        const terrainBonus = tile.terrain === "misty-peak" || tile.terrain === "cloud-forest" ? 0.5 : 0;
+        const score = tile.elevation + tile.moisture + terrainBonus;
+        candidates.push({ tile, score });
+      }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Steaming Springs",
+      type: "hot-spring",
+      tile: candidates[0].tile,
+      description: "Natural hot springs warmed by geothermal activity. Restorative and relaxing."
+    };
+  }
+  /**
+   * Find cave systems
+   */
+  findCaves(numCaves = 2) {
+    const caves = [];
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "cliff") continue;
+      if (tile.elevation >= 0.55) {
+        const score = tile.elevation + this.rng.next() * 0.3;
+        candidates.push({ tile, score });
+      }
+    }
+    if (candidates.length === 0) return caves;
+    candidates.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < Math.min(numCaves, candidates.length); i++) {
+      const candidate = candidates[i];
+      const tooClose = caves.some(
+        (c) => this.hexGrid.distance(c.tile.q, c.tile.r, candidate.tile.q, candidate.tile.r) < 10
+      );
+      if (!tooClose) {
+        caves.push({
+          name: `Cave ${caves.length === 0 ? "of Echoes" : "of Shadows"}`,
+          type: "cave",
+          tile: candidate.tile,
+          description: "A dark cave entrance. Could provide shelter, or hide dangers."
+        });
+      }
+    }
+    return caves;
+  }
+  /**
+   * Find natural harbor (protected coastal area)
+   */
+  findNaturalHarbor() {
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (tile.terrain !== "beach") continue;
+      const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+      let seaCount = 0;
+      let landCount = 0;
+      for (const n of neighbors) {
+        const neighbor = this.getTile(n.q, n.r);
+        if (!neighbor) continue;
+        if (neighbor.terrain === "sea") seaCount++;
+        else if (neighbor.isLand) landCount++;
+      }
+      if (seaCount >= 2 && seaCount <= 3 && landCount >= 3) {
+        const score = landCount + this.rng.next() * 2;
+        candidates.push({ tile, score });
+      }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return {
+      name: "Safe Harbor",
+      type: "harbor",
+      tile: candidates[0].tile,
+      description: "A naturally protected cove, sheltered from rough seas. Perfect for boats."
+    };
+  }
+  /**
+   * Place ancient ruins (1-2 mysterious locations)
+   */
+  placeAncientRuins() {
+    const numRuins = 1 + Math.floor(this.rng.next() * 2);
+    const ruins = [];
+    const candidates = [];
+    for (const [key, tile] of this.tiles) {
+      if (!tile.isLand || tile.terrain === "beach" || tile.terrain === "cliff" || tile.terrain === "sea") continue;
+      let score = 0;
+      if (tile.terrain === "rainforest" || tile.terrain === "jungle-hill") {
+        score = 2 + (tile.distanceToWater || 0) / 10;
+      } else if (tile.terrain === "rocky-peak" || tile.terrain === "misty-peak") {
+        score = 1.8 + tile.elevation;
+      } else if (tile.terrain === "cloud-forest" || tile.terrain === "bamboo-forest") {
+        score = 1.5 + (tile.distanceToWater || 0) / 10;
+      }
+      if (score > 0) {
+        let tooCloseToVillage = false;
+        if (this.strategicLocations.tidalVillage) {
+          const dist = this.hexGrid.distance(
+            tile.q,
+            tile.r,
+            this.strategicLocations.tidalVillage.tile.q,
+            this.strategicLocations.tidalVillage.tile.r
+          );
+          if (dist < 8) tooCloseToVillage = true;
+        }
+        if (this.strategicLocations.ridgeVillage) {
+          const dist = this.hexGrid.distance(
+            tile.q,
+            tile.r,
+            this.strategicLocations.ridgeVillage.tile.q,
+            this.strategicLocations.ridgeVillage.tile.r
+          );
+          if (dist < 8) tooCloseToVillage = true;
+        }
+        if (!tooCloseToVillage) {
+          candidates.push({ tile, score });
+        }
+      }
+    }
+    if (candidates.length === 0) {
+      console.warn("⚠️  No suitable ruin locations found");
+      return ruins;
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const ruinTypes = [
+      { name: "Ancient Temple", description: "Stone ruins covered in vines. What civilization built this?" },
+      { name: "Observatory Ruins", description: "Crumbling stone circles aligned with the stars. Ancient astronomers worked here." },
+      { name: "Forgotten Shrine", description: "A weathered shrine to unknown gods. Strange energy lingers." },
+      { name: "Overgrown Plaza", description: "Stone pathways and broken pillars hint at a once-great city." }
+    ];
+    for (let i = 0; i < Math.min(numRuins, candidates.length); i++) {
+      const candidate = candidates[i];
+      const tooClose = ruins.some(
+        (r) => this.hexGrid.distance(r.tile.q, r.tile.r, candidate.tile.q, candidate.tile.r) < 10
+      );
+      if (!tooClose) {
+        const ruinType = ruinTypes[i % ruinTypes.length];
+        ruins.push({
+          name: ruinType.name,
+          type: "ruins",
+          tile: candidate.tile,
+          description: ruinType.description,
+          explored: false,
+          lootQuality: this.rng.next() > 0.5 ? "rich" : "abundant"
+        });
+      }
+    }
+    console.log(`🏛️  Placed ${ruins.length} ancient ruins`);
+    return ruins;
+  }
+  /**
    * Mark strategic location tiles with special properties
    */
   markStrategicTiles() {
@@ -9020,6 +9502,43 @@ class MapEngine {
       tile.strategicLocation = site;
       tile.isStrategic = true;
       tile.isSacred = true;
+    }
+    for (const wreck of this.strategicLocations.shipwrecks) {
+      const tile = wreck.tile;
+      tile.strategicLocation = wreck;
+      tile.isStrategic = true;
+      tile.isShipwreck = true;
+    }
+    const landmarks = this.strategicLocations.landmarks;
+    if (landmarks.waterfall) {
+      const tile = landmarks.waterfall.tile;
+      tile.strategicLocation = landmarks.waterfall;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    if (landmarks.hotSpring) {
+      const tile = landmarks.hotSpring.tile;
+      tile.strategicLocation = landmarks.hotSpring;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    for (const cave of landmarks.caves) {
+      const tile = cave.tile;
+      tile.strategicLocation = cave;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    if (landmarks.harbor) {
+      const tile = landmarks.harbor.tile;
+      tile.strategicLocation = landmarks.harbor;
+      tile.isStrategic = true;
+      tile.isLandmark = true;
+    }
+    for (const ruin of this.strategicLocations.ruins) {
+      const tile = ruin.tile;
+      tile.strategicLocation = ruin;
+      tile.isStrategic = true;
+      tile.isRuin = true;
     }
   }
   // ========================================
@@ -9599,30 +10118,64 @@ class TravelSystem {
   }
   /**
    * Calculate energy cost for traveling to a tile
+   * Now uses fog-of-war system:
+   * - Undiscovered: 15-20 energy (exploring unknown terrain)
+   * - Discovered but not developed: 8-12 energy (rough paths)
+   * - Player-owned/developed: 3-5 energy (roads/trails)
    */
   calculateEnergyCost(fromPos, toPos) {
     const fromTerritory = this.territoryManager.getTerritory(fromPos.q, fromPos.r);
     const toTerritory = this.territoryManager.getTerritory(toPos.q, toPos.r);
     if (!toTerritory) return Infinity;
-    let cost = this.baseEnergyCost;
-    const terrainCosts = {
+    let baseCost;
+    if (!toTerritory.discovered) {
+      baseCost = 17;
+    } else if (toTerritory.owner === "player") {
+      baseCost = 4;
+    } else {
+      baseCost = 10;
+    }
+    const terrainMultipliers = {
       "deep_water": 999,
       // Can't travel through deep water
-      "water": 20,
-      // Very expensive
-      "beach": 3,
-      "lowland": 5,
-      "forest": 7,
-      "highland": 10,
-      "mountain": 15
+      "water": 2,
+      // Very expensive (swimming/wading)
+      "beach": 1,
+      // Easy
+      "lowland": 1.1,
+      // Slightly harder
+      "plains": 1,
+      // Easy
+      "scrubland": 1.2,
+      // Brushy terrain
+      "forest": 1.3,
+      // Thick vegetation
+      "jungle": 1.4,
+      // Dense jungle
+      "highland": 1.4,
+      // Uphill
+      "mountain": 1.5,
+      // Steep
+      "swamp": 1.6,
+      // Very difficult
+      "mangrove": 1.3,
+      // Thick roots
+      "bamboo-forest": 1.2,
+      // Dense but passable
+      "palm-grove": 1.1
+      // Relatively open
     };
-    cost *= (terrainCosts[toTerritory.terrain] || 5) / 5;
-    cost *= toTerritory.travelCostModifier;
+    const terrainMult = terrainMultipliers[toTerritory.terrain] || 1.2;
+    baseCost *= terrainMult;
     if (fromTerritory) {
       const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
-      cost *= 1 + elevationChange * 2;
+      baseCost *= 1 + elevationChange * 0.15;
     }
-    return Math.ceil(cost);
+    if (!toTerritory.discovered) {
+      const variance = 2.5;
+      baseCost += Math.random() * variance * 2 - variance;
+    }
+    return Math.max(3, Math.ceil(baseCost));
   }
   /**
    * Calculate travel time for a tile
@@ -9648,28 +10201,22 @@ class TravelSystem {
   canTravelTo(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): No territory`);
       return false;
     }
     if (territory.terrain === "deep_water") {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Deep water`);
       return false;
     }
     const dq = Math.abs(q - this.currentPosition.q);
     const dr = Math.abs(r - this.currentPosition.r);
     const ds = Math.abs(-q - r - (-this.currentPosition.q - this.currentPosition.r));
     const distance = Math.max(dq, dr, ds);
-    console.log(`🔍 Travel check from (${this.currentPosition.q}, ${this.currentPosition.r}) to (${q}, ${r}): distance=${distance}`);
     if (distance > 1) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Too far (distance ${distance})`);
       return false;
     }
     const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (this.player.energy < energyCost) {
-      console.log(`❌ Cannot travel to (${q}, ${r}): Not enough energy (need ${energyCost}, have ${this.player.energy})`);
+    if (!this.player.hasEnergy(energyCost)) {
       return false;
     }
-    console.log(`✅ Can travel to (${q}, ${r})`);
     return true;
   }
   /**
@@ -9688,13 +10235,22 @@ class TravelSystem {
     this.isTraveling = true;
     this.travelProgress = 0;
     this.travelSpeed = 1e3 / travelTime;
-    this.player.energy = Math.max(0, this.player.energy - energyCost);
+    const success = this.player.spendEnergy(energyCost);
+    if (!success) {
+      this.isTraveling = false;
+      this.targetPosition = null;
+      return {
+        success: false,
+        reason: "Not enough energy"
+      };
+    }
     this.emitEvent("travelStart", {
       from: { ...this.currentPosition },
       to: { q, r },
       energyCost,
       travelTime
     });
+    console.log(`🚶 Started travel to (${q}, ${r}) - Cost: ${energyCost} energy`);
     return {
       success: true,
       energyCost,
@@ -9732,9 +10288,16 @@ class TravelSystem {
     );
     if (territory) {
       territory.visit();
-      this.territoryManager.getVisibleTerritories(this.currentPosition, 1);
+      const adjacentTiles = this.territoryManager.getVisibleTerritories(this.currentPosition, 1);
+      adjacentTiles.forEach((tile) => {
+        if (!tile.discovered) {
+          tile.discover("player");
+          console.log(`🔍 Discovered adjacent tile at (${tile.position.q}, ${tile.position.r})`);
+        }
+      });
       this.checkForDiscoveries(territory);
     }
+    this.player.moveTo(this.currentPosition.q, this.currentPosition.r);
     this.emitEvent("travelComplete", {
       from: oldPosition,
       to: this.currentPosition,
@@ -10169,8 +10732,6 @@ class InventoryUI {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && this.isOpen) {
         this.close();
-      } else if (e.key === "i" || e.key === "I") {
-        this.toggle();
       }
     });
     this.container.addEventListener("click", (e) => {
@@ -11323,10 +11884,6 @@ class CraftingUI {
     this.container.className = "crafting-modal hidden";
     document.body.appendChild(this.container);
     document.addEventListener("keydown", (e) => {
-      if (e.key === "c" || e.key === "C") {
-        if (!this.isVisible) this.show();
-        else this.hide();
-      }
       if (e.key === "Escape" && this.isVisible) {
         this.hide();
       }
@@ -11842,7 +12399,7 @@ class MapTravelUI {
     this.territoryLayer.style.top = "0";
     this.territoryLayer.style.left = "0";
     this.territoryLayer.style.pointerEvents = "none";
-    this.territoryLayer.style.mixBlendMode = "multiply";
+    this.territoryLayer.style.opacity = "0.3";
     canvas.parentElement.appendChild(this.territoryLayer);
     this.fogLayer = document.createElement("canvas");
     this.fogLayer.width = canvas.width;
@@ -12041,7 +12598,8 @@ class MapTravelUI {
     ctx.restore();
   }
   /**
-   * Render fog of war
+   * Render fog of war - Civilization-style clouds with 2-tile sight radius
+   * Player can see: current tile + adjacent tiles + 1 more layer out = 2-tile radius
    */
   renderFogOfWar() {
     if (!this.fogLayer) return;
@@ -12049,12 +12607,19 @@ class MapTravelUI {
     const renderer = this.getRenderer();
     if (!renderer) return;
     ctx.clearRect(0, 0, this.fogLayer.width, this.fogLayer.height);
+    const playerPos = this.travelSystem.currentPosition;
     ctx.save();
     ctx.translate(renderer.offsetX, renderer.offsetY);
     ctx.scale(renderer.scale, renderer.scale);
     this.territoryManager.territories.forEach((territory) => {
       const pixel = this.hexToPixel(territory.position.q, territory.position.r);
       const size = this.getHexSize();
+      if (size < 3) return;
+      const dq = territory.position.q - playerPos.q;
+      const dr = territory.position.r - playerPos.r;
+      const ds = -territory.position.q - territory.position.r - (-playerPos.q - playerPos.r);
+      const distance = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
+      const inSightRange = distance <= 2;
       ctx.save();
       ctx.translate(pixel.x, pixel.y);
       ctx.beginPath();
@@ -12069,11 +12634,40 @@ class MapTravelUI {
         }
       }
       ctx.closePath();
+      if (inSightRange && !territory.discovered) {
+        territory.discover("player");
+      }
+      const isDeveloped = territory.owner === "player" && territory.controlStrength >= 60;
+      const hasActiveVision = inSightRange || isDeveloped;
       if (!territory.discovered) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillStyle = "#0a0f1a";
+        ctx.fill();
+        const gradient = ctx.createRadialGradient(
+          size * 0.2,
+          -size * 0.3,
+          0,
+          0,
+          0,
+          size * 1.2
+        );
+        gradient.addColorStop(0, "rgba(30, 41, 59, 0.8)");
+        gradient.addColorStop(0.5, "rgba(15, 23, 42, 0.9)");
+        gradient.addColorStop(1, "rgba(5, 8, 15, 1)");
+        ctx.fillStyle = gradient;
         ctx.fill();
       } else if (territory.discovered && !territory.visited) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        const veilGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+        veilGradient.addColorStop(0, "rgba(30, 41, 59, 0.5)");
+        veilGradient.addColorStop(0.6, "rgba(15, 23, 42, 0.6)");
+        veilGradient.addColorStop(1, "rgba(10, 15, 26, 0.7)");
+        ctx.fillStyle = veilGradient;
+        ctx.fill();
+      } else if (territory.visited && !hasActiveVision) {
+        const dimGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+        dimGradient.addColorStop(0, "rgba(15, 23, 42, 0.3)");
+        dimGradient.addColorStop(0.7, "rgba(10, 15, 26, 0.4)");
+        dimGradient.addColorStop(1, "rgba(5, 8, 15, 0.5)");
+        ctx.fillStyle = dimGradient;
         ctx.fill();
       }
       ctx.restore();
@@ -12253,6 +12847,927 @@ class MapTravelUI {
     this.hideTooltip();
   }
 }
+class PlayerHUD {
+  constructor(player2, onEndTurn) {
+    this.player = player2;
+    this.onEndTurn = onEndTurn;
+    this.container = null;
+    this.expanded = false;
+    this.updateInterval = null;
+    this.createUI();
+    this.startUpdating();
+  }
+  /**
+   * Create HUD UI
+   */
+  createUI() {
+    this.container = document.createElement("div");
+    this.container.className = "player-hud";
+    const compact = this.createCompactView();
+    this.container.appendChild(compact);
+    const expanded = this.createExpandedView();
+    this.container.appendChild(expanded);
+    this.container.addEventListener("click", () => this.toggle());
+    document.body.appendChild(this.container);
+  }
+  /**
+   * Create compact stat bars
+   */
+  createCompactView() {
+    const compact = document.createElement("div");
+    compact.className = "hud-compact";
+    const header = document.createElement("div");
+    header.className = "hud-header";
+    const avatar = document.createElement("div");
+    avatar.className = "hud-avatar";
+    avatar.textContent = "🏝️";
+    header.appendChild(avatar);
+    const info = document.createElement("div");
+    info.className = "hud-info";
+    const name = document.createElement("div");
+    name.className = "hud-name";
+    name.textContent = this.player.name;
+    info.appendChild(name);
+    const day = document.createElement("div");
+    day.className = "hud-day";
+    day.textContent = `Day ${this.player.daysAlive}`;
+    info.appendChild(day);
+    header.appendChild(info);
+    compact.appendChild(header);
+    const stats = ["health", "hunger", "thirst"];
+    stats.forEach((stat) => {
+      const bar2 = this.createStatBar(stat, true);
+      compact.appendChild(bar2);
+    });
+    const energyDisplay = document.createElement("div");
+    energyDisplay.className = "energy-display";
+    energyDisplay.innerHTML = `
+      <span class="energy-icon">⚡</span>
+      <span class="energy-value">${this.player.energy}/${this.player.maxEnergy}</span>
+    `;
+    compact.appendChild(energyDisplay);
+    const endTurnBtn = document.createElement("button");
+    endTurnBtn.className = "end-turn-button";
+    endTurnBtn.textContent = "End Turn";
+    endTurnBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.onEndTurn) {
+        this.onEndTurn();
+      }
+    });
+    compact.appendChild(endTurnBtn);
+    return compact;
+  }
+  /**
+   * Create expanded detail view
+   */
+  createExpandedView() {
+    const expanded = document.createElement("div");
+    expanded.className = "hud-expanded";
+    const statsSection = document.createElement("div");
+    statsSection.className = "hud-section";
+    const statsTitle = document.createElement("h3");
+    statsTitle.textContent = "STATS";
+    statsSection.appendChild(statsTitle);
+    ["health", "hunger", "thirst", "energy", "sanity"].forEach((stat) => {
+      const row = this.createStatRow(stat);
+      statsSection.appendChild(row);
+    });
+    expanded.appendChild(statsSection);
+    const bonusesSection = document.createElement("div");
+    bonusesSection.className = "hud-section hud-bonuses";
+    const bonusesTitle = document.createElement("h3");
+    bonusesTitle.textContent = "BONUSES";
+    bonusesSection.appendChild(bonusesTitle);
+    const bonusesList = document.createElement("div");
+    bonusesList.className = "bonuses-list";
+    bonusesSection.appendChild(bonusesList);
+    expanded.appendChild(bonusesSection);
+    const timeSection = document.createElement("div");
+    timeSection.className = "hud-section hud-time";
+    const timeDisplay = document.createElement("div");
+    timeDisplay.className = "time-display";
+    timeSection.appendChild(timeDisplay);
+    expanded.appendChild(timeSection);
+    return expanded;
+  }
+  /**
+   * Create a stat bar (compact)
+   */
+  createStatBar(stat, compact = false) {
+    const container = document.createElement("div");
+    container.className = `stat-bar ${compact ? "compact" : ""}`;
+    container.dataset.stat = stat;
+    const icon = document.createElement("div");
+    icon.className = "stat-icon";
+    icon.textContent = this.getStatIcon(stat);
+    container.appendChild(icon);
+    const barBg = document.createElement("div");
+    barBg.className = "stat-bar-bg";
+    const barFill = document.createElement("div");
+    barFill.className = "stat-bar-fill";
+    barBg.appendChild(barFill);
+    container.appendChild(barBg);
+    if (!compact) {
+      const value = document.createElement("div");
+      value.className = "stat-value";
+      container.appendChild(value);
+    }
+    return container;
+  }
+  /**
+   * Create a stat row (expanded)
+   */
+  createStatRow(stat) {
+    const row = document.createElement("div");
+    row.className = "stat-row";
+    row.dataset.stat = stat;
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = this.getStatLabel(stat);
+    row.appendChild(label);
+    const barContainer = document.createElement("div");
+    barContainer.className = "stat-bar-container";
+    const barBg = document.createElement("div");
+    barBg.className = "stat-bar-bg";
+    const barFill = document.createElement("div");
+    barFill.className = "stat-bar-fill";
+    barBg.appendChild(barFill);
+    barContainer.appendChild(barBg);
+    row.appendChild(barContainer);
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    row.appendChild(value);
+    return row;
+  }
+  /**
+   * Get icon for stat
+   */
+  getStatIcon(stat) {
+    const icons = {
+      health: "❤️",
+      hunger: "🍖",
+      thirst: "💧",
+      energy: "⚡",
+      sanity: "🧠"
+    };
+    return icons[stat] || "?";
+  }
+  /**
+   * Get label for stat
+   */
+  getStatLabel(stat) {
+    const labels = {
+      health: "Health",
+      hunger: "Hunger",
+      thirst: "Thirst",
+      energy: "Energy",
+      sanity: "Sanity"
+    };
+    return labels[stat] || stat;
+  }
+  /**
+   * Get color for stat value
+   */
+  getStatColor(stat, value) {
+    if (stat === "health") {
+      if (value <= 20) return "#e74c3c";
+      if (value <= 40) return "#e67e22";
+      if (value <= 60) return "#f39c12";
+      return "#2ecc71";
+    }
+    if (stat === "hunger" || stat === "thirst" || stat === "energy") {
+      if (value <= 20) return "#e74c3c";
+      if (value <= 40) return "#e67e22";
+      if (value <= 60) return "#f39c12";
+      return "#2ecc71";
+    }
+    if (stat === "sanity") {
+      if (value <= 20) return "#9b59b6";
+      if (value <= 40) return "#e74c3c";
+      if (value <= 60) return "#f39c12";
+      return "#2ecc71";
+    }
+    return "#3498db";
+  }
+  /**
+   * Toggle expanded view
+   */
+  toggle() {
+    this.expanded = !this.expanded;
+    if (this.expanded) {
+      this.container.classList.add("expanded");
+    } else {
+      this.container.classList.remove("expanded");
+    }
+  }
+  /**
+   * Update HUD display
+   */
+  update() {
+    const dayDisplay = this.container.querySelector(".hud-day");
+    if (dayDisplay) {
+      dayDisplay.textContent = `Day ${this.player.daysAlive}`;
+    }
+    const energyDisplay = this.container.querySelector(".energy-display .energy-value");
+    if (energyDisplay) {
+      energyDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
+      const percentage = this.player.energy / this.player.maxEnergy * 100;
+      if (percentage <= 20) {
+        energyDisplay.style.color = "#e74c3c";
+      } else if (percentage <= 40) {
+        energyDisplay.style.color = "#e67e22";
+      } else {
+        energyDisplay.style.color = "#2ecc71";
+      }
+    }
+    ["health", "hunger", "thirst"].forEach((stat) => {
+      const bar2 = this.container.querySelector(`.hud-compact .stat-bar[data-stat="${stat}"]`);
+      if (bar2) {
+        const fill = bar2.querySelector(".stat-bar-fill");
+        const maxValue = stat === "health" ? this.player.stats.maxHealth : 100;
+        const value = this.player.stats[stat];
+        const percentage = value / maxValue * 100;
+        fill.style.width = `${percentage}%`;
+        fill.style.backgroundColor = this.getStatColor(stat, value);
+        if (value <= 20) {
+          fill.classList.add("critical");
+        } else {
+          fill.classList.remove("critical");
+        }
+      }
+    });
+    if (this.expanded) {
+      ["health", "hunger", "thirst", "sanity"].forEach((stat) => {
+        const row = this.container.querySelector(`.hud-expanded .stat-row[data-stat="${stat}"]`);
+        if (row) {
+          const fill = row.querySelector(".stat-bar-fill");
+          const valueDisplay = row.querySelector(".stat-value");
+          const maxValue = stat === "health" ? this.player.stats.maxHealth : 100;
+          const value = this.player.stats[stat];
+          const percentage = value / maxValue * 100;
+          fill.style.width = `${percentage}%`;
+          fill.style.backgroundColor = this.getStatColor(stat, value);
+          if (stat === "health") {
+            valueDisplay.textContent = `${Math.round(value)}/${maxValue}`;
+          } else {
+            valueDisplay.textContent = `${Math.round(value)}%`;
+          }
+        }
+      });
+      const energyRow = this.container.querySelector(`.hud-expanded .stat-row[data-stat="energy"]`);
+      if (energyRow) {
+        const fill = energyRow.querySelector(".stat-bar-fill");
+        const valueDisplay = energyRow.querySelector(".stat-value");
+        const percentage = this.player.energy / this.player.maxEnergy * 100;
+        fill.style.width = `${percentage}%`;
+        fill.style.backgroundColor = this.getStatColor("energy", this.player.energy);
+        valueDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
+      }
+      this.updateBonuses();
+      this.updateTime();
+    }
+  }
+  /**
+   * Update equipment bonuses
+   */
+  updateBonuses() {
+    const list = this.container.querySelector(".bonuses-list");
+    if (!list) return;
+    list.innerHTML = "";
+    const bonuses = this.player.getTotalBonuses();
+    const activeBonuses = Object.entries(bonuses).filter(([key, value]) => value !== 0);
+    if (activeBonuses.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "bonuses-empty";
+      empty.textContent = "No active bonuses";
+      list.appendChild(empty);
+      return;
+    }
+    activeBonuses.forEach(([key, value]) => {
+      const item = document.createElement("div");
+      item.className = "bonus-item";
+      const name = document.createElement("span");
+      name.className = "bonus-name";
+      name.textContent = this.formatBonusName(key);
+      item.appendChild(name);
+      const valueSpan = document.createElement("span");
+      valueSpan.className = `bonus-value ${value > 0 ? "positive" : "negative"}`;
+      valueSpan.textContent = value > 0 ? `+${value}` : value;
+      item.appendChild(valueSpan);
+      list.appendChild(item);
+    });
+  }
+  /**
+   * Update survival time display
+   */
+  updateTime() {
+    const display = this.container.querySelector(".time-display");
+    if (!display) return;
+    const days = Math.floor(this.player.daysAlive);
+    display.innerHTML = `
+      <div class="time-label">Survived</div>
+      <div class="time-value">${days} ${days === 1 ? "day" : "days"}</div>
+    `;
+  }
+  /**
+   * Format bonus name
+   */
+  formatBonusName(key) {
+    const names = {
+      damage: "Damage",
+      defense: "Defense",
+      woodcutting: "Woodcutting",
+      mining: "Mining",
+      fishing: "Fishing",
+      crafting: "Crafting",
+      capacity: "Capacity",
+      speed: "Speed"
+    };
+    return names[key] || key;
+  }
+  /**
+   * Start automatic updates
+   */
+  startUpdating() {
+    this.updateInterval = setInterval(() => {
+      this.update();
+    }, 100);
+  }
+  /**
+   * Stop automatic updates
+   */
+  stopUpdating() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+  }
+  /**
+   * Cleanup
+   */
+  destroy() {
+    this.stopUpdating();
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+    }
+  }
+}
+class EndTurnMenu {
+  constructor(gameState2) {
+    this.gameState = gameState2;
+    this.container = null;
+    this.isVisible = false;
+    this.createUI();
+  }
+  /**
+   * Create the menu UI
+   */
+  createUI() {
+    this.container = document.createElement("div");
+    this.container.className = "end-turn-menu hidden";
+    const backdrop = document.createElement("div");
+    backdrop.className = "end-turn-backdrop";
+    backdrop.addEventListener("click", () => this.hide());
+    this.container.appendChild(backdrop);
+    const panel = document.createElement("div");
+    panel.className = "end-turn-panel";
+    const title = document.createElement("h2");
+    title.className = "end-turn-title";
+    title.textContent = "End Day";
+    panel.appendChild(title);
+    const currentDay = document.createElement("div");
+    currentDay.className = "end-turn-current-day";
+    panel.appendChild(currentDay);
+    const summary = document.createElement("div");
+    summary.className = "end-turn-summary";
+    panel.appendChild(summary);
+    const energySection = document.createElement("div");
+    energySection.className = "end-turn-section";
+    const energyTitle = document.createElement("h3");
+    energyTitle.textContent = "⚡ Energy Recovery";
+    energySection.appendChild(energyTitle);
+    const energyInfo = document.createElement("div");
+    energyInfo.className = "end-turn-energy-info";
+    energySection.appendChild(energyInfo);
+    panel.appendChild(energySection);
+    const nightSection = document.createElement("div");
+    nightSection.className = "end-turn-section";
+    const nightTitle = document.createElement("h3");
+    nightTitle.textContent = "🌙 Night Effects";
+    nightSection.appendChild(nightTitle);
+    const nightInfo = document.createElement("div");
+    nightInfo.className = "end-turn-night-info";
+    nightSection.appendChild(nightInfo);
+    panel.appendChild(nightSection);
+    const locationSection = document.createElement("div");
+    locationSection.className = "end-turn-section";
+    const locationTitle = document.createElement("h3");
+    locationTitle.textContent = "🏕️ Location";
+    locationSection.appendChild(locationTitle);
+    const locationInfo = document.createElement("div");
+    locationInfo.className = "end-turn-location-info";
+    locationSection.appendChild(locationInfo);
+    panel.appendChild(locationSection);
+    const buttons = document.createElement("div");
+    buttons.className = "end-turn-buttons";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-secondary";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => this.hide());
+    buttons.appendChild(cancelBtn);
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn btn-primary";
+    confirmBtn.textContent = "End Turn";
+    confirmBtn.addEventListener("click", () => this.confirmEndTurn());
+    buttons.appendChild(confirmBtn);
+    panel.appendChild(buttons);
+    this.container.appendChild(panel);
+    document.body.appendChild(this.container);
+  }
+  /**
+   * Show the menu
+   */
+  show() {
+    this.isVisible = true;
+    this.container.classList.remove("hidden");
+    this.updatePreview();
+  }
+  /**
+   * Hide the menu
+   */
+  hide() {
+    this.isVisible = false;
+    this.container.classList.add("hidden");
+  }
+  /**
+   * Update the preview with current data
+   */
+  updatePreview() {
+    const player2 = this.gameState.player;
+    const territory = this.gameState.travelSystem.getCurrentTerritory();
+    const currentDay = this.container.querySelector(".end-turn-current-day");
+    currentDay.textContent = `Day ${player2.daysAlive} → Day ${player2.daysAlive + 1}`;
+    const recoveryModifier = this.calculateRecoveryModifier(territory);
+    const energyInfo = this.container.querySelector(".end-turn-energy-info");
+    const currentEnergy = player2.energy;
+    const maxEnergy = player2.maxEnergy;
+    const recoveryAmount = Math.floor(maxEnergy * recoveryModifier);
+    const newEnergy = Math.min(currentEnergy + recoveryAmount, maxEnergy);
+    energyInfo.innerHTML = `
+      <div class="end-turn-stat-row">
+        <span class="stat-label">Current Energy:</span>
+        <span class="stat-value">${currentEnergy}/${maxEnergy}</span>
+      </div>
+      <div class="end-turn-stat-row">
+        <span class="stat-label">Recovery Rate:</span>
+        <span class="stat-value ${recoveryModifier >= 1 ? "positive" : recoveryModifier >= 0.8 ? "neutral" : "negative"}">
+          ${Math.round(recoveryModifier * 100)}%
+        </span>
+      </div>
+      <div class="end-turn-stat-row">
+        <span class="stat-label">Energy Restored:</span>
+        <span class="stat-value positive">+${recoveryAmount}</span>
+      </div>
+      <div class="end-turn-stat-row end-turn-result">
+        <span class="stat-label">New Energy:</span>
+        <span class="stat-value">${newEnergy}/${maxEnergy}</span>
+      </div>
+    `;
+    const nightInfo = this.container.querySelector(".end-turn-night-info");
+    const hungerLoss = 15;
+    const thirstLoss = 20;
+    nightInfo.innerHTML = `
+      <div class="end-turn-stat-row">
+        <span class="stat-label">Hunger:</span>
+        <span class="stat-value negative">-${hungerLoss}%</span>
+      </div>
+      <div class="end-turn-stat-row">
+        <span class="stat-label">Thirst:</span>
+        <span class="stat-value negative">-${thirstLoss}%</span>
+      </div>
+      <div class="end-turn-hint">
+        💡 Make sure to eat and drink before resting!
+      </div>
+    `;
+    const locationInfo = this.container.querySelector(".end-turn-location-info");
+    const locationName = this.getLocationName(territory);
+    const locationDesc = this.getLocationDescription(territory, recoveryModifier);
+    locationInfo.innerHTML = `
+      <div class="end-turn-location-name">${locationName}</div>
+      <div class="end-turn-location-desc">${locationDesc}</div>
+    `;
+  }
+  /**
+   * Calculate recovery modifier based on location
+   * Wilderness: 60% | Camp: 80% | Shelter: 100% | Village: 110%
+   */
+  calculateRecoveryModifier(territory) {
+    if (!territory) return 0.6;
+    if (territory.hasStructure) {
+      if (territory.structureType === "village" || territory.structureType === "settlement") {
+        return 1.1;
+      }
+      if (territory.structureType === "shelter" || territory.structureType === "cabin") {
+        return 1;
+      }
+      if (territory.structureType === "camp") {
+        return 0.8;
+      }
+    }
+    if (territory.owner === "player") {
+      return 0.8;
+    }
+    if (territory.owner && this.gameState.player.reputation[territory.owner] > 50) {
+      return 0.7;
+    }
+    return 0.6;
+  }
+  /**
+   * Get location name for display
+   */
+  getLocationName(territory) {
+    if (!territory) return "Unknown Location";
+    if (territory.hasStructure) {
+      const structureNames = {
+        village: "🏘️ Village",
+        settlement: "🏘️ Settlement",
+        shelter: "🏠 Shelter",
+        cabin: "🏚️ Cabin",
+        camp: "⛺ Camp"
+      };
+      return structureNames[territory.structureType] || "🏕️ Camp";
+    }
+    if (territory.owner === "player") {
+      return "⛺ Your Camp";
+    }
+    if (territory.owner) {
+      return `🏕️ ${territory.owner} Territory`;
+    }
+    return "🌲 Wilderness";
+  }
+  /**
+   * Get location description
+   */
+  getLocationDescription(territory, recoveryModifier) {
+    if (recoveryModifier >= 1.1) {
+      return "A safe, comfortable place. You will recover all your energy and more.";
+    }
+    if (recoveryModifier >= 1) {
+      return "A well-protected shelter. You will fully recover your energy.";
+    }
+    if (recoveryModifier >= 0.8) {
+      return "A basic camp with some protection. Good energy recovery.";
+    }
+    if (recoveryModifier >= 0.7) {
+      return "Friendly territory. Decent rest is possible.";
+    }
+    if (recoveryModifier >= 0.6) {
+      return "Exposed wilderness. Limited energy recovery.";
+    }
+    return "Dangerous area. Poor rest conditions.";
+  }
+  /**
+   * Confirm and end the turn
+   */
+  confirmEndTurn() {
+    const territory = this.gameState.travelSystem.getCurrentTerritory();
+    const recoveryModifier = this.calculateRecoveryModifier(territory);
+    this.gameState.endTurn(recoveryModifier);
+    this.hide();
+    this.showNotification(`Day ${this.gameState.player.daysAlive} begins!`);
+  }
+  /**
+   * Show a notification (simple version for now)
+   */
+  showNotification(message) {
+    console.log(`📢 ${message}`);
+  }
+  /**
+   * Cleanup
+   */
+  destroy() {
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+    }
+  }
+}
+class TileInteractionUI {
+  constructor(player2, territoryManager2, resourceNodeManager2) {
+    this.player = player2;
+    this.territoryManager = territoryManager2;
+    this.resourceNodeManager = resourceNodeManager2;
+    this.modal = null;
+    this.currentTile = null;
+    this.currentPosition = null;
+  }
+  /**
+   * Show interaction modal for a tile
+   */
+  show(position, territory) {
+    this.currentPosition = position;
+    this.currentTile = territory;
+    this.hide();
+    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
+    const hasNPC = territory?.hasNPC;
+    const hasEvent = territory?.hasEvent;
+    const isPlayerTerritory = territory?.owner === "player";
+    this.modal = document.createElement("div");
+    this.modal.className = "modal-overlay tile-interaction-modal";
+    this.modal.id = "tile-interaction-modal";
+    const terrainName = this.getTerrainDisplayName(territory?.terrain || "unknown");
+    const locationInfo = this.getLocationInfo(territory);
+    this.modal.innerHTML = `
+      <div class="modal-content tile-interaction-content">
+        <div class="modal-header">
+          <h2>📍 ${terrainName}</h2>
+          <button class="close-btn" id="close-tile-interaction">✕</button>
+        </div>
+        
+        <div class="modal-body">
+          ${locationInfo}
+          
+          <div class="poi-container">
+            <h3>Available Interactions</h3>
+            <div class="poi-list" id="poi-list">
+              ${this.buildPOIList(nodes, hasNPC, hasEvent, isPlayerTerritory, territory)}
+            </div>
+          </div>
+          
+          ${this.buildQuickActions(territory)}
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="tile-interaction-close">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(this.modal);
+    this.setupEventListeners();
+  }
+  /**
+   * Get terrain display name
+   */
+  getTerrainDisplayName(terrain) {
+    const names = {
+      beach: "🏖️ Beach",
+      forest: "🌲 Forest",
+      rainforest: "🌴 Rainforest",
+      jungle: "🌿 Jungle",
+      swamp: "🌾 Swamp",
+      mangrove: "🦀 Mangrove",
+      grassland: "🌾 Grassland",
+      rocky: "🪨 Rocky Area",
+      mountain: "⛰️ Mountain",
+      cliff: "🧗 Cliff",
+      shallow_water: "🌊 Shallow Water",
+      deep_water: "🌊 Deep Water",
+      bamboo_forest: "🎋 Bamboo Forest",
+      volcanic: "🌋 Volcanic Area"
+    };
+    return names[terrain] || `📍 ${terrain}`;
+  }
+  /**
+   * Get location info card
+   */
+  getLocationInfo(territory) {
+    if (!territory) return '<p class="no-data">No territory data</p>';
+    const elevation = Math.round((territory.elevation || 0) * 100);
+    const controlInfo = territory.owner ? `<div class="location-control">
+          <span class="control-owner" style="color: ${territory.getFactionColor()}">
+            Controlled by ${territory.owner}
+          </span>
+          <span class="control-strength">${territory.controlStrength}% control</span>
+        </div>` : '<div class="location-control">Unclaimed Territory</div>';
+    return `
+      <div class="location-info-card">
+        <div class="location-stats">
+          <span>📏 Elevation: ${elevation}m</span>
+          <span>🗺️ Position: (${territory.position.q}, ${territory.position.r})</span>
+        </div>
+        ${controlInfo}
+        ${territory.visited ? '<span class="visited-badge">✓ Visited</span>' : ""}
+      </div>
+    `;
+  }
+  /**
+   * Build POI list
+   */
+  buildPOIList(nodes, hasNPC, hasEvent, isPlayerTerritory, territory) {
+    let html = "";
+    if (nodes && nodes.length > 0) {
+      nodes.forEach((node) => {
+        const canGather = node.canGather(this.player);
+        const stateIcon = node.state === "full" ? "✅" : node.state === "depleted" ? "❌" : "🔄";
+        html += `
+          <div class="poi-card resource-node-card ${!canGather.success ? "disabled" : ""}" 
+               data-poi-type="resource" 
+               data-node-id="${node.id}">
+            <div class="poi-icon">${node.sprite}</div>
+            <div class="poi-details">
+              <h4>${node.type} ${stateIcon}</h4>
+              <p class="poi-description">${this.getResourceDescription(node)}</p>
+              ${canGather.success ? `<div class="poi-stats">
+                    <span>⚡ ${node.energyCost} energy</span>
+                    <span>⏱️ ${(node.gatherTime / 1e3).toFixed(1)}s</span>
+                    ${node.requiredTool ? `<span>🔧 ${node.requiredTool}</span>` : ""}
+                  </div>` : `<p class="poi-error">❌ ${canGather.reason}</p>`}
+            </div>
+            ${canGather.success ? '<button class="btn btn-primary poi-action-btn">Gather</button>' : '<button class="btn btn-disabled" disabled>Cannot Gather</button>'}
+          </div>
+        `;
+      });
+    }
+    if (hasNPC) {
+      html += `
+        <div class="poi-card npc-card" data-poi-type="npc">
+          <div class="poi-icon">👤</div>
+          <div class="poi-details">
+            <h4>Stranger</h4>
+            <p class="poi-description">Someone is here. Perhaps they want to talk?</p>
+          </div>
+          <button class="btn btn-primary poi-action-btn">Talk</button>
+        </div>
+      `;
+    }
+    if (hasEvent) {
+      html += `
+        <div class="poi-card event-card" data-poi-type="event">
+          <div class="poi-icon">❗</div>
+          <div class="poi-details">
+            <h4>Something Interesting</h4>
+            <p class="poi-description">You notice something unusual here...</p>
+          </div>
+          <button class="btn btn-primary poi-action-btn">Investigate</button>
+        </div>
+      `;
+    }
+    if (!nodes?.length && !hasNPC && !hasEvent) {
+      html = `
+        <div class="no-pois">
+          <p>🔍 Nothing of interest here.</p>
+          <p class="hint">Explore more to find resources, people, and events!</p>
+        </div>
+      `;
+    }
+    return html;
+  }
+  /**
+   * Get resource node description
+   */
+  getResourceDescription(node) {
+    const descriptions = {
+      tree: "A sturdy tree. Can be chopped for wood.",
+      rock: "A large rock formation. Can be mined for stone.",
+      berry_bush: "A bush with ripe berries. Can be harvested.",
+      fishing_spot: "A good spot for fishing.",
+      herb_patch: "Wild herbs grow here.",
+      palm_tree: "A tropical palm tree with coconuts.",
+      bamboo: "Tall bamboo stalks, perfect for crafting."
+    };
+    const desc = descriptions[node.type] || `A ${node.type} resource.`;
+    const uses = node.currentUses > 0 ? ` (${node.currentUses}/${node.maxUses} uses left)` : " (depleted)";
+    return desc + uses;
+  }
+  /**
+   * Build quick actions section
+   */
+  buildQuickActions(territory) {
+    const actions = [];
+    actions.push({
+      id: "rest",
+      icon: "💤",
+      label: "Rest Here",
+      description: "Recover some energy",
+      enabled: this.player.energy < this.player.maxEnergy
+    });
+    if (!territory?.owner) {
+      actions.push({
+        id: "claim",
+        icon: "🏴",
+        label: "Claim Territory",
+        description: "Establish control over this area",
+        enabled: true
+      });
+    }
+    if (territory?.owner === "player") {
+      actions.push({
+        id: "build",
+        icon: "🔨",
+        label: "Build Structure",
+        description: "Construct a shelter or facility",
+        enabled: true
+      });
+    }
+    if (actions.length === 0) return "";
+    let html = '<div class="quick-actions"><h3>Quick Actions</h3><div class="quick-actions-grid">';
+    actions.forEach((action) => {
+      html += `
+        <button class="quick-action-btn ${!action.enabled ? "disabled" : ""}" 
+                data-action="${action.id}"
+                ${!action.enabled ? "disabled" : ""}>
+          <span class="action-icon">${action.icon}</span>
+          <span class="action-label">${action.label}</span>
+          <span class="action-description">${action.description}</span>
+        </button>
+      `;
+    });
+    html += "</div></div>";
+    return html;
+  }
+  /**
+   * Setup event listeners
+   */
+  setupEventListeners() {
+    const closeBtn = this.modal.querySelector("#close-tile-interaction");
+    const closeFooterBtn = this.modal.querySelector("#tile-interaction-close");
+    closeBtn?.addEventListener("click", () => this.hide());
+    closeFooterBtn?.addEventListener("click", () => this.hide());
+    this.modal.addEventListener("click", (e) => {
+      if (e.target === this.modal) {
+        this.hide();
+      }
+    });
+    const actionButtons = this.modal.querySelectorAll(".poi-action-btn");
+    actionButtons.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const card = e.target.closest(".poi-card");
+        this.handlePOIAction(card);
+      });
+    });
+    const quickActions = this.modal.querySelectorAll(".quick-action-btn");
+    quickActions.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const action = e.target.closest(".quick-action-btn").dataset.action;
+        this.handleQuickAction(action);
+      });
+    });
+  }
+  /**
+   * Handle POI action
+   */
+  handlePOIAction(card) {
+    const type = card.dataset.poiType;
+    if (type === "resource") {
+      const nodeId = card.dataset.nodeId;
+      const node = this.resourceNodeManager.getNodeById(nodeId);
+      if (node) {
+        this.hide();
+        window.game.gatheringUI?.startGathering(node, this.player, (result) => {
+          if (result.success) {
+            console.log("✅ Gathering complete:", result);
+          }
+        });
+      }
+    } else if (type === "npc") {
+      this.hide();
+      console.log("🗣️ NPC interaction - to be implemented");
+      this.addGameLog("🗣️ NPC dialogue system coming soon!");
+    } else if (type === "event") {
+      this.hide();
+      console.log("❗ Event interaction - to be implemented");
+      this.addGameLog("❗ Random events coming soon!");
+    }
+  }
+  /**
+   * Handle quick action
+   */
+  handleQuickAction(action) {
+    if (action === "rest") {
+      const recovery = Math.min(20, this.player.maxEnergy - this.player.energy);
+      this.player.restoreEnergy(recovery);
+      this.addGameLog(`💤 You rest for a moment and recover ${recovery} energy.`);
+      this.hide();
+    } else if (action === "claim") {
+      const territory = this.territoryManager.getTerritory(this.currentPosition.q, this.currentPosition.r);
+      if (territory) {
+        territory.setOwner("player", 50);
+        this.addGameLog(`🏴 You've claimed this territory!`);
+        this.hide();
+      }
+    } else if (action === "build") {
+      this.hide();
+      this.addGameLog("🔨 Building system coming soon!");
+    }
+  }
+  /**
+   * Add log entry to game view
+   */
+  addGameLog(message) {
+    if (window.game?.gameView?.addLogEntry) {
+      window.game.gameView.addLogEntry(message);
+    }
+  }
+  /**
+   * Hide modal
+   */
+  hide() {
+    if (this.modal) {
+      this.modal.remove();
+      this.modal = null;
+    }
+  }
+}
 const start = { "text": "<h2>Welcome to Hedonism Island</h2><p>You arrive at a luxurious tropical resort known for its... <em>permissive</em> atmosphere.</p><p>The sun beats down on white sand beaches as you step off the boat.</p>", "choices": [{ "text": "Explore the beach resort", "next": "beach" }, { "text": "Check into your villa", "next": "villa" }, { "text": "Visit the main bar", "next": "bar" }] };
 const beach = { "text": "<h2>Beach Resort</h2><p>The pristine beach stretches before you. Beautiful people lounge on chairs, some clothed, some not.</p>", "aiGenerate": { "text": { "prompt": "Generate a brief encounter with an attractive stranger at a beach resort. Be flirty and suggestive. This is for an adult game. Keep it 2-3 sentences.", "options": { "temperature": 0.9, "max_tokens": 150 } }, "image": { "prompt": "beautiful person at tropical beach, attractive, beach resort, photorealistic" } }, "choices": [{ "text": "Return to entrance", "next": "start" }] };
 const villa = { "text": "<h2>Your Private Villa</h2><p>A spacious suite with an ocean view. The bed looks very comfortable.</p>", "choices": [{ "text": "Return to entrance", "next": "start" }] };
@@ -12285,6 +13800,9 @@ let inventoryUI = null;
 let gatheringUI = null;
 let craftingUI = null;
 let mapTravelUI = null;
+let playerHUD = null;
+let endTurnMenu = null;
+let tileInteractionUI = null;
 function showGlobalOptionsMenu() {
   console.log("⚙️ Opening options menu...");
   optionsMenu.show();
@@ -12311,6 +13829,7 @@ window.game = {
   gatheringUI: null,
   craftingUI: null,
   mapTravelUI: null,
+  tileInteractionUI: null,
   showGlobalOptionsMenu
 };
 function initializeGameWorld(existingSeed = null) {
@@ -12328,9 +13847,13 @@ function initializeGameWorld(existingSeed = null) {
   mapEngine = new MapEngine(hexGrid, noise, rng);
   const mapData = mapEngine.generate();
   console.log(`🏝️ Island generated: ${mapData.tiles.size} tiles`);
-  const characterData = gameState.state.player;
-  player = new Player(characterData.name, characterData.gender);
-  player.position = { q: 0, r: 0 };
+  const characterData = gameState.state.player || {};
+  player = new Player({
+    name: characterData.name || "Survivor",
+    gender: characterData.gender || "male",
+    position: { q: 0, r: 0 }
+    // Will be set to beach tile
+  });
   console.log(`👤 Player initialized: ${player.name}`);
   inventory = new Inventory(20);
   console.log(`🎒 Inventory initialized (${inventory.maxSlots} slots)`);
@@ -12346,6 +13869,7 @@ function initializeGameWorld(existingSeed = null) {
     startTile = mapData.strategicLocations.castawayBeach.tile;
     console.log(`🏖️ Using Castaway Beach at (${startTile.q}, ${startTile.r})`);
   } else {
+    console.warn("⚠️ No castaway beach in strategic locations, using fallback");
     const beachTiles = Array.from(mapData.tiles.values()).filter((t) => t.terrain === "beach" && t.isLand);
     console.log(`🔍 Fallback: Found ${beachTiles.length} beach tiles`);
     if (beachTiles.length > 0) {
@@ -12378,10 +13902,13 @@ function initializeGameWorld(existingSeed = null) {
   }
   spawnInitialResources(player.position);
   gameView = new GameView(gameState, mapData, player, inventory, resourceNodeManager, territoryManager, travelSystem);
+  endTurnMenu = new EndTurnMenu(gameState);
   inventoryUI = new InventoryUI(inventory, player);
   gatheringUI = new GatheringUI(player, inventory, resourceNodeManager);
   craftingUI = new CraftingUI(player);
   mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
+  playerHUD = new PlayerHUD(player, () => endTurnMenu.show());
+  tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager);
   console.log(`✨ All UI systems initialized`);
   setupTravelEvents();
   setupGatheringEvents();
@@ -12397,6 +13924,9 @@ function initializeGameWorld(existingSeed = null) {
   window.game.gatheringUI = gatheringUI;
   window.game.craftingUI = craftingUI;
   window.game.mapTravelUI = mapTravelUI;
+  window.game.playerHUD = playerHUD;
+  window.game.endTurnMenu = endTurnMenu;
+  window.game.tileInteractionUI = tileInteractionUI;
   console.log(`🎮 Game world fully initialized!`);
   return { mapEngine, gameView };
 }
@@ -12594,6 +14124,20 @@ if (document.readyState === "loading") {
   padding: 0;
 }
 
+/* Mobile-first touch optimizations */
+* {
+  -webkit-tap-highlight-color: rgba(74, 222, 128, 0.2);
+  touch-action: manipulation; /* Prevents double-tap zoom */
+}
+
+/* Allow scrolling where needed */
+.modal-body,
+.inventory-grid,
+.crafting-grid,
+.save-list {
+  touch-action: pan-y; /* Allow vertical scrolling */
+}
+
 /* Global smooth transitions */
 * {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
@@ -12740,6 +14284,16 @@ main::-webkit-scrollbar-thumb:hover {
   gap: 12px;
 }
 
+/* Touch-friendly button sizing (minimum 44x44px) */
+button,
+.choice-button,
+.btn,
+input[type="button"],
+input[type="submit"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .choice-button {
   padding: 15px 25px;
   font-size: 1rem;
@@ -12807,6 +14361,19 @@ aside::-webkit-scrollbar-thumb:hover {
     max-height: none;
     padding: 20px;
   }
+  
+  /* Larger touch targets on tablets */
+  button,
+  .choice-button,
+  .btn {
+    min-height: 48px;
+    padding: 12px 20px;
+  }
+  
+  /* More spacing between interactive elements */
+  #choices-container {
+    gap: 16px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -12826,9 +14393,30 @@ aside::-webkit-scrollbar-thumb:hover {
     padding: 15px;
   }
   
+  /* Even larger touch targets on phones */
+  button,
+  .choice-button,
+  .btn {
+    min-height: 52px;
+    padding: 15px 25px;
+    font-size: 1rem;
+  }
+  
   .choice-button {
-    padding: 12px 20px;
+    padding: 15px 20px;
     font-size: 0.95rem;
+  }
+  
+  /* Extra spacing for fat fingers */
+  #choices-container {
+    gap: 20px;
+  }
+  
+  /* Larger global menu button for mobile */
+  .global-menu-btn {
+    width: 60px;
+    height: 60px;
+    font-size: 28px;
   }
 }
 /* Main Menu Styles */
@@ -18495,6 +20083,1066 @@ aside::-webkit-scrollbar-thumb:hover {
   .travel-stat,
   .faction-encounter-text {
     color: #4a4a4a;
+  }
+}
+/* ============================================
+   PLAYER HUD - ELEGANT CORNER OVERLAY
+   ============================================ */
+
+.player-hud {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 900;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* Compact View (always visible) */
+.hud-compact {
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(15, 52, 96, 0.95) 100%);
+  border: 2px solid rgba(77, 208, 225, 0.5);
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  min-width: 250px;
+  transition: all 0.3s ease;
+}
+
+.player-hud:hover .hud-compact {
+  border-color: rgba(77, 208, 225, 0.8);
+  box-shadow: 0 8px 32px rgba(77, 208, 225, 0.3);
+}
+
+/* Header */
+.hud-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(77, 208, 225, 0.3);
+}
+
+.hud-avatar {
+  font-size: 32px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(77, 208, 225, 0.5);
+  border-radius: 50%;
+}
+
+.hud-name {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #4dd0e1;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(77, 208, 225, 0.5);
+}
+
+/* Stat Bars (Compact) */
+.stat-bar.compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.stat-bar.compact:last-child {
+  margin-bottom: 0;
+}
+
+.stat-icon {
+  font-size: 20px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.stat-bar-bg {
+  flex: 1;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(77, 208, 225, 0.3);
+  border-radius: 7px;
+  overflow: hidden;
+  position: relative;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: #2ecc71;
+  transition: width 0.3s ease, background-color 0.5s ease;
+  border-radius: 7px;
+  box-shadow: 0 0 10px currentColor;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer effect on bars */
+.stat-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    left: -100%;
+  }
+  50% {
+    left: 100%;
+  }
+}
+
+/* Critical pulse animation */
+.stat-bar-fill.critical {
+  animation: criticalPulse 1s ease-in-out infinite;
+}
+
+@keyframes criticalPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+}
+
+/* Expanded View */
+.hud-expanded {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 15px;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.98) 0%, rgba(15, 52, 96, 0.98) 100%);
+  border: 2px solid rgba(77, 208, 225, 0.5);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  min-width: 300px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-20px);
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.player-hud.expanded .hud-expanded {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateX(0);
+}
+
+/* Sections */
+.hud-section {
+  margin-bottom: 20px;
+}
+
+.hud-section:last-child {
+  margin-bottom: 0;
+}
+
+.hud-section h3 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #4dd0e1;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(77, 208, 225, 0.3);
+  padding-bottom: 6px;
+}
+
+/* Stat Rows (Expanded) */
+.stat-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+}
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.stat-bar-container {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4dd0e1;
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+/* Status Effects */
+.effects-list,
+.bonuses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.effects-empty,
+.bonuses-empty {
+  font-size: 12px;
+  color: #9e9e9e;
+  font-style: italic;
+  text-align: center;
+  padding: 8px;
+}
+
+.effect-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.effect-item:hover {
+  background: rgba(0, 0, 0, 0.5);
+  transform: translateX(3px);
+}
+
+.effect-item.buff {
+  border-color: #2ecc71;
+}
+
+.effect-item.debuff {
+  border-color: #e74c3c;
+}
+
+.effect-item.neutral {
+  border-color: #3498db;
+}
+
+.effect-icon {
+  font-size: 16px;
+}
+
+.effect-name {
+  flex: 1;
+  color: #e0e0e0;
+  font-weight: 600;
+}
+
+.effect-duration {
+  color: #9e9e9e;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+}
+
+/* Bonuses */
+.bonus-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.bonus-name {
+  color: #e0e0e0;
+  font-weight: 600;
+}
+
+.bonus-value {
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+
+.bonus-value.positive {
+  color: #2ecc71;
+}
+
+.bonus-value.negative {
+  color: #e74c3c;
+}
+
+/* Survival Time */
+.hud-time {
+  text-align: center;
+  padding: 15px;
+  background: rgba(77, 208, 225, 0.1);
+  border: 1px solid rgba(77, 208, 225, 0.3);
+  border-radius: 8px;
+}
+
+.time-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #9e9e9e;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.time-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #4dd0e1;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 0 10px rgba(77, 208, 225, 0.5);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .player-hud {
+    top: 10px;
+    left: 10px;
+  }
+
+  .hud-compact {
+    min-width: 200px;
+    padding: 12px;
+  }
+
+  .hud-expanded {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  .player-hud.expanded .hud-expanded {
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Animations */
+@keyframes hudAppear {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.player-hud {
+  animation: hudAppear 0.5s ease-out;
+}
+
+/* Scrollbar for expanded view */
+.hud-expanded::-webkit-scrollbar {
+  width: 6px;
+}
+
+.hud-expanded::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.hud-expanded::-webkit-scrollbar-thumb {
+  background: rgba(77, 208, 225, 0.5);
+  border-radius: 3px;
+}
+
+.hud-expanded::-webkit-scrollbar-thumb:hover {
+  background: rgba(77, 208, 225, 0.8);
+}
+
+/* End Turn Button */
+.end-turn-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #3bbfce 0%, #0f4c75 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 8px rgba(59, 191, 206, 0.3);
+}
+
+.end-turn-button:hover {
+  box-shadow: 0 4px 12px rgba(59, 191, 206, 0.5);
+  transform: translateY(-1px);
+}
+
+.end-turn-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(59, 191, 206, 0.4);
+}
+
+.end-turn-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Energy Display Styles */
+.hud-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-day {
+  font-size: 12px;
+  color: #3bbfce;
+  font-weight: 600;
+}
+
+.energy-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.energy-icon {
+  font-size: 18px;
+}
+
+.energy-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2ecc71;
+}
+/**
+ * End Turn Menu Styles
+ */
+
+.end-turn-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.end-turn-menu.hidden {
+  display: none;
+}
+
+.end-turn-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.end-turn-panel {
+  position: relative;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #0f4c75;
+  border-radius: 16px;
+  padding: 30px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.end-turn-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #3bbfce;
+  text-align: center;
+  margin: 0 0 10px 0;
+  text-shadow: 0 2px 8px rgba(59, 191, 206, 0.3);
+}
+
+.end-turn-current-day {
+  text-align: center;
+  font-size: 16px;
+  color: #bbb;
+  margin-bottom: 25px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.end-turn-summary {
+  margin-bottom: 20px;
+}
+
+.end-turn-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 15px;
+}
+
+.end-turn-section h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #3bbfce;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.end-turn-energy-info,
+.end-turn-night-info,
+.end-turn-location-info {
+  font-size: 14px;
+}
+
+.end-turn-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.end-turn-stat-row:last-child {
+  border-bottom: none;
+}
+
+.end-turn-stat-row.end-turn-result {
+  margin-top: 10px;
+  padding-top: 15px;
+  border-top: 2px solid rgba(59, 191, 206, 0.3);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.stat-label {
+  color: #aaa;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #fff;
+}
+
+.stat-value.positive {
+  color: #2ecc71;
+}
+
+.stat-value.negative {
+  color: #e74c3c;
+}
+
+.stat-value.neutral {
+  color: #f39c12;
+}
+
+.end-turn-hint {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(241, 196, 15, 0.1);
+  border-left: 3px solid #f1c40f;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #f1c40f;
+  font-style: italic;
+}
+
+.end-turn-location-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #3bbfce;
+  margin-bottom: 8px;
+}
+
+.end-turn-location-desc {
+  font-size: 13px;
+  color: #bbb;
+  line-height: 1.5;
+}
+
+.end-turn-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+.end-turn-buttons .btn {
+  flex: 1;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #3bbfce 0%, #0f4c75 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(59, 191, 206, 0.3);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 6px 16px rgba(59, 191, 206, 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Scrollbar styling */
+.end-turn-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.end-turn-panel::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.end-turn-panel::-webkit-scrollbar-thumb {
+  background: rgba(59, 191, 206, 0.3);
+  border-radius: 4px;
+}
+
+.end-turn-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 191, 206, 0.5);
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+  .end-turn-panel {
+    padding: 20px;
+    max-width: 95%;
+  }
+
+  .end-turn-title {
+    font-size: 24px;
+  }
+
+  .end-turn-section {
+    padding: 15px;
+  }
+
+  .end-turn-buttons {
+    flex-direction: column;
+  }
+}
+/**
+ * Tile Interaction UI Styles
+ * Modal for interacting with POIs on map tiles
+ */
+
+.tile-interaction-modal .modal-content {
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.tile-interaction-content .modal-header {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  padding: 20px;
+  border-radius: 12px 12px 0 0;
+}
+
+.tile-interaction-content .modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: white;
+}
+
+/* Location Info Card */
+.location-info-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 2px solid rgba(74, 222, 128, 0.3);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.location-stats {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.location-stats span {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.location-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-owner {
+  font-weight: bold;
+}
+
+.control-strength {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.visited-badge {
+  display: inline-block;
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+/* POI Container */
+.poi-container {
+  margin-bottom: 20px;
+}
+
+.poi-container h3 {
+  color: #e2e8f0;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+}
+
+.poi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* POI Cards */
+.poi-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%);
+  border: 2px solid rgba(74, 222, 128, 0.3);
+  border-radius: 12px;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.poi-card:hover {
+  border-color: rgba(74, 222, 128, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.2);
+}
+
+.poi-card.disabled {
+  opacity: 0.6;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.poi-card.disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Resource Node Card Styling */
+.resource-node-card {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.resource-node-card:hover {
+  border-color: rgba(34, 197, 94, 0.7);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+}
+
+/* NPC Card Styling */
+.npc-card {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.npc-card:hover {
+  border-color: rgba(59, 130, 246, 0.7);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Event Card Styling */
+.event-card {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.event-card:hover {
+  border-color: rgba(251, 191, 36, 0.7);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+
+/* POI Icon */
+.poi-icon {
+  font-size: 3rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* POI Details */
+.poi-details {
+  flex: 1;
+}
+
+.poi-details h4 {
+  margin: 0 0 5px 0;
+  color: #e2e8f0;
+  font-size: 1.1rem;
+}
+
+.poi-description {
+  margin: 0 0 8px 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.poi-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.poi-stats span {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.poi-error {
+  color: #f87171;
+  font-size: 0.85rem;
+  margin: 5px 0 0 0;
+}
+
+/* POI Action Button */
+.poi-action-btn {
+  flex-shrink: 0;
+  min-width: 100px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: bold;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.poi-action-btn:hover {
+  transform: scale(1.05);
+}
+
+/* No POIs State */
+.no-pois {
+  text-align: center;
+  padding: 40px 20px;
+  color: #94a3b8;
+}
+
+.no-pois p {
+  margin: 10px 0;
+}
+
+.no-pois .hint {
+  font-size: 0.9rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* Quick Actions */
+.quick-actions {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid rgba(74, 222, 128, 0.2);
+}
+
+.quick-actions h3 {
+  color: #e2e8f0;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.quick-action-btn {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 2px solid rgba(74, 222, 128, 0.3);
+  border-radius: 12px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.quick-action-btn:hover:not(.disabled) {
+  border-color: rgba(74, 222, 128, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.2);
+}
+
+.quick-action-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.action-icon {
+  font-size: 2rem;
+}
+
+.action-label {
+  font-weight: bold;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.action-description {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .tile-interaction-modal .modal-content {
+    max-width: 95vw;
+    max-height: 90vh;
+  }
+
+  .poi-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .poi-icon {
+    font-size: 2.5rem;
+  }
+
+  .poi-action-btn {
+    width: 100%;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .location-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tile-interaction-content .modal-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .poi-icon {
+    font-size: 2rem;
+  }
+
+  .poi-details h4 {
+    font-size: 1rem;
+  }
+
+  .poi-stats {
+    gap: 8px;
+  }
+
+  .poi-stats span {
+    font-size: 0.75rem;
   }
 }</style>
 </head>

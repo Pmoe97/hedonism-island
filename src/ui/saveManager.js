@@ -220,19 +220,11 @@ export class SaveManager {
     importBtn?.addEventListener('click', () => importFile?.click());
     importFile?.addEventListener('change', (e) => this.handleImport(e));
 
-    // Keyboard shortcuts
+    // Only ESC to close (removed F5/F9 shortcuts)
     this.keyHandler = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         this.hide();
-      }
-      if (e.key === 'F5') {
-        e.preventDefault();
-        this.handleQuickSave();
-      }
-      if (e.key === 'F9') {
-        e.preventDefault();
-        this.handleQuickLoad();
       }
     };
     document.addEventListener('keydown', this.keyHandler);

@@ -391,18 +391,9 @@ export class GameView {
       this.showGameMenu();
     });
 
-    // Keyboard shortcuts
+    // Only ESC key for closing modals (standard UX pattern)
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'i' || e.key === 'I') {
-        e.preventDefault();
-        window.game.inventoryUI?.toggle();
-      } else if (e.key === 'c' || e.key === 'C') {
-        e.preventDefault();
-        window.game.craftingUI?.toggle();
-      } else if (e.key === 'k' || e.key === 'K') {
-        e.preventDefault();
-        this.showSkillsMenu();
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         // Close any open UIs
         window.game.inventoryUI?.hide();
         window.game.craftingUI?.hide();
@@ -650,23 +641,31 @@ export class GameView {
     
     if (!tile) return;
 
-    // Check if clicking a resource node
-    const nodes = this.resourceNodeManager.getNodesAt(hex.q, hex.r);
-    const node = nodes && nodes.length > 0 ? nodes[0] : null;
-    if (node) {
-      // Check if player is adjacent or on the same tile
-      const distance = Math.abs(hex.q - this.player.position.q) + 
-                       Math.abs(hex.r - this.player.position.r) +
-                       Math.abs((-hex.q - hex.r) - (-this.player.position.q - this.player.position.r));
-      
-      if (distance === 0 || distance === 2) { // Same tile or adjacent
-        // Open gathering UI
-        window.game.gatheringUI?.show(node);
-        return;
+    // Calculate distance using proper hex distance formula
+    const dq = Math.abs(hex.q - this.player.position.q);
+    const dr = Math.abs(hex.r - this.player.position.r);
+    const ds = Math.abs((-hex.q - hex.r) - (-this.player.position.q - this.player.position.r));
+    const distance = Math.max(dq, dr, ds);
+
+    // Check if clicking current tile - show tile interaction modal
+    if (distance === 0) {
+      this.showTileActions(tile, hex);
+      return;
+    }
+
+    // Check if clicking adjacent tile with POIs - show interaction modal
+    const territory = this.territoryManager.getTerritory(hex.q, hex.r);
+    const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r) || [];
+    const hasPOIs = nodes.length > 0 || territory?.hasNPC || territory?.hasEvent;
+    
+    if (distance === 1 && hasPOIs) {
+      // Adjacent tile with POIs - show interaction modal
+      if (window.game?.tileInteractionUI) {
+        window.game.tileInteractionUI.show(hex, territory);
       } else {
-        this.addLogEntry('❌ Too far away. Move closer to gather.');
-        return;
+        this.addLogEntry('🔍 Something interesting here. Move closer to interact.');
       }
+      return;
     }
 
     // Otherwise, try to travel
@@ -675,10 +674,43 @@ export class GameView {
       return;
     }
 
+    // Must be adjacent to travel
+    if (distance > 1) {
+      this.addLogEntry("❌ Too far to travel in one move.");
+      return;
+    }
+
     // Use TravelSystem to move
     const result = this.travelSystem.startTravel(hex.q, hex.r);
     if (!result.success) {
       this.addLogEntry(`❌ ${result.reason}`);
+    }
+  }
+
+  /**
+   * Show available actions for current tile
+   */
+  showTileActions(tile, hex) {
+    const territory = this.territoryManager.getTerritory(hex.q, hex.r);
+    
+    // Open the tile interaction UI modal
+    if (window.game?.tileInteractionUI) {
+      window.game.tileInteractionUI.show(hex, territory);
+    } else {
+      // Fallback to simple log message
+      const nodes = this.resourceNodeManager.getNodesAt(hex.q, hex.r);
+      
+      let message = `📍 Current Location: ${tile.terrain}`;
+      
+      // Show available actions
+      if (nodes && nodes.length > 0) {
+        message += ` | 🌲 Resources available`;
+      }
+      if (territory && territory.owner) {
+        message += ` | 🏴 Controlled by ${territory.owner}`;
+      }
+      
+      this.addLogEntry(message);
     }
   }
 

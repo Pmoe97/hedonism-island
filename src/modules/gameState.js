@@ -46,10 +46,8 @@ export class GameState {
       characters: [], // NPCs
       time: {
         day: 1,
-        hour: 8, // 0-23
-        minute: 0,
-        season: "summer",
-        timeScale: 60 // 60 game minutes per real second (adjustable)
+        // Removed: hour, minute, timeScale - now pure turn-based
+        season: "summer"
       },
       flags: {
         phase: 1, // 1-4 (story phases)
@@ -140,6 +138,10 @@ export class GameState {
   /**
    * Game loop - updates time, stats, and all systems
    */
+  /**
+   * Start game loop (simplified for turn-based system)
+   * Only tracks play time and handles auto-saves
+   */
   startGameLoop() {
     this.gameLoopInterval = setInterval(() => {
       if (this.isPaused) return;
@@ -149,15 +151,10 @@ export class GameState {
       this.state.meta.lastTick = now;
       this.state.meta.playTime += deltaTime / 1000; // track in seconds
 
-      // Advance time
-      this.advanceTime(deltaTime);
+      // No time advancement - game is turn-based now
+      // Player energy is spent through actions, not time
 
-      // Update player (handles stat degradation, status effects, critical states)
-      if (this.player) {
-        this.player.update(deltaTime);
-      }
-
-      // Update resource nodes (regeneration)
+      // Update resource nodes (still need regeneration tracking)
       if (this.resourceManager) {
         this.resourceManager.update(deltaTime);
       }
@@ -194,33 +191,51 @@ export class GameState {
   }
 
   /**
-   * Advance in-game time
+   * Advance to next day (end turn)
+   * Called when player chooses to end their turn
    */
-  advanceTime(deltaMs) {
-    // Convert real time to game time using timeScale
-    const gameMinutes = (deltaMs / 1000) * (this.state.time.timeScale / 60);
+  endTurn(recoveryModifier = 1.0) {
+    this.state.time.day += 1;
     
-    this.state.time.minute += gameMinutes;
-    
-    if (this.state.time.minute >= 60) {
-      const hoursToAdd = Math.floor(this.state.time.minute / 60);
-      this.state.time.minute = this.state.time.minute % 60;
-      this.state.time.hour += hoursToAdd;
+    // Restore player energy based on shelter/location
+    let recoveryAmount = 0;
+    if (this.player) {
+      recoveryAmount = Math.floor(this.player.maxEnergy * recoveryModifier);
+      this.player.restoreEnergy(recoveryAmount);
       
-      if (this.state.time.hour >= 24) {
-        const daysToAdd = Math.floor(this.state.time.hour / 24);
-        this.state.time.hour = this.state.time.hour % 24;
-        this.state.time.day += daysToAdd;
-        
-        this.emit('newDay', { day: this.state.time.day });
-      }
+      // Apply night effects (hunger/thirst loss)
+      this.player.applyNightEffects();
       
-      this.emit('newHour', { hour: this.state.time.hour, day: this.state.time.day });
+      console.log(`🌙 Night passed. Day ${this.state.time.day} begins.`);
+      console.log(`⚡ Energy: ${this.player.energy}/${this.player.maxEnergy} (recovered ${recoveryAmount})`);
     }
     
-    this.emit('timeAdvanced', this.state.time);
+    // Process NPC faction turns here (future)
+    // this.processFactionTurns();
+    
+    // Regenerate resources between days
+    if (this.resourceManager) {
+      this.resourceManager.regenerateDaily();
+    }
+    
+    this.emit('newDay', { 
+      day: this.state.time.day,
+      energyRecovered: recoveryAmount,
+      player: this.player
+    });
+    
+    return {
+      day: this.state.time.day,
+      energyRecovered: recoveryAmount
+    };
   }
 
+  /**
+   * Get current day number
+   */
+  getCurrentDay() {
+    return this.state.time.day;
+  }
   /**
    * Set time scale (how fast time passes)
    */

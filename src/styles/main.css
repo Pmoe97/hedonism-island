@@ -4,6 +4,20 @@
   padding: 0;
 }
 
+/* Mobile-first touch optimizations */
+* {
+  -webkit-tap-highlight-color: rgba(74, 222, 128, 0.2);
+  touch-action: manipulation; /* Prevents double-tap zoom */
+}
+
+/* Allow scrolling where needed */
+.modal-body,
+.inventory-grid,
+.crafting-grid,
+.save-list {
+  touch-action: pan-y; /* Allow vertical scrolling */
+}
+
 /* Global smooth transitions */
 * {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
@@ -150,6 +164,16 @@ main::-webkit-scrollbar-thumb:hover {
   gap: 12px;
 }
 
+/* Touch-friendly button sizing (minimum 44x44px) */
+button,
+.choice-button,
+.btn,
+input[type="button"],
+input[type="submit"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .choice-button {
   padding: 15px 25px;
   font-size: 1rem;
@@ -217,6 +241,19 @@ aside::-webkit-scrollbar-thumb:hover {
     max-height: none;
     padding: 20px;
   }
+  
+  /* Larger touch targets on tablets */
+  button,
+  .choice-button,
+  .btn {
+    min-height: 48px;
+    padding: 12px 20px;
+  }
+  
+  /* More spacing between interactive elements */
+  #choices-container {
+    gap: 16px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -236,8 +273,29 @@ aside::-webkit-scrollbar-thumb:hover {
     padding: 15px;
   }
   
+  /* Even larger touch targets on phones */
+  button,
+  .choice-button,
+  .btn {
+    min-height: 52px;
+    padding: 15px 25px;
+    font-size: 1rem;
+  }
+  
   .choice-button {
-    padding: 12px 20px;
+    padding: 15px 20px;
     font-size: 0.95rem;
+  }
+  
+  /* Extra spacing for fat fingers */
+  #choices-container {
+    gap: 20px;
+  }
+  
+  /* Larger global menu button for mobile */
+  .global-menu-btn {
+    width: 60px;
+    height: 60px;
+    font-size: 28px;
   }
 }

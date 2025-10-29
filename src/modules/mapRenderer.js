@@ -19,17 +19,29 @@ export class MapRenderer {
     
     // Colors for different terrains
     this.terrainColors = {
-      'sea': '#1e3a8a',
-      'beach': '#fde047',
-      'river': '#3b82f6',
-      'savanna': '#a3e635',
-      'forest': '#22c55e',
-      'rainforest': '#15803d',
-      'dry-hill': '#a8a29e',
-      'jungle-hill': '#65a30d',
-      'cloud-forest': '#6ee7b7',
-      'rocky-peak': '#78716c',
-      'misty-peak': '#cbd5e1'
+      // WATER/COAST
+      'sea': '#1e3a8a',           // Deep blue
+      'beach': '#f4e4c1',         // Softer sand/beige
+      'cliff': '#57534e',         // Warm grey
+      'river': '#3b82f6',         // Bright blue
+      
+      // LOWLANDS
+      'savanna': '#d4b896',       // Golden tan
+      'forest': '#22c55e',        // Green
+      'rainforest': '#15803d',    // Dark green
+      'mangrove': '#166534',      // Dark swampy green
+      'palm-grove': '#84cc16',    // Bright tropical green
+      
+      // HILLS
+      'dry-hill': '#a8a29e',      // Tan/grey
+      'jungle-hill': '#65a30d',   // Olive green
+      'cloud-forest': '#6ee7b7',  // Mint/teal
+      'bamboo-forest': '#86efac', // Light fresh green
+      'scrubland': '#d6d3d1',     // Dusty grey-brown
+      
+      // MOUNTAINS
+      'rocky-peak': '#78716c',    // Dark grey
+      'misty-peak': '#e2e8f0'     // Lighter grey/white
     };
     
     this.setupCanvas();
@@ -269,6 +281,103 @@ export class MapRenderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.fillText('✦', 0, 0);
+        break;
+        
+      case 'shipwreck':
+        // Shipwreck - broken ship/anchor icon
+        this.ctx.fillStyle = '#92400e'; // Dark brown
+        this.ctx.strokeStyle = '#000';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        // Draw anchor/ship symbol
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('⚓', 0, 0);
+        break;
+        
+      case 'waterfall':
+        // Waterfall - cascade icon
+        this.ctx.fillStyle = '#3b82f6'; // Blue
+        this.ctx.strokeStyle = '#1e3a8a';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('≋', 0, 0);
+        break;
+        
+      case 'hot-spring':
+        // Hot spring - steam icon
+        this.ctx.fillStyle = '#f97316'; // Orange
+        this.ctx.strokeStyle = '#ea580c';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('♨', 0, 0);
+        break;
+        
+      case 'cave':
+        // Cave - dark entrance icon
+        this.ctx.fillStyle = '#1c1917'; // Very dark grey
+        this.ctx.strokeStyle = '#78716c';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#a8a29e';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('◐', 0, 0);
+        break;
+        
+      case 'harbor':
+        // Harbor - anchor/port icon
+        this.ctx.fillStyle = '#0ea5e9'; // Sky blue
+        this.ctx.strokeStyle = '#0284c7';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 12px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('⚓', 0, 0);
+        break;
+        
+      case 'ruins':
+        // Ancient Ruins - pillar icon
+        this.ctx.fillStyle = '#78716c'; // Stone grey
+        this.ctx.strokeStyle = '#44403c';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 9, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = '#d6d3d1';
+        this.ctx.font = 'bold 14px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('🏛', 0, 0);
         break;
     }
     
