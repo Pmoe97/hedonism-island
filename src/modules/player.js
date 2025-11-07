@@ -1,4 +1,5 @@
 import { Inventory } from './inventory.js';
+import { itemDB } from '../data/itemDatabase.js';
 
 /**
  * Player Character System
@@ -21,11 +22,8 @@ export class Player {
     this.name = config.name || 'Survivor';
     this.gender = config.gender || 'male'; // For AI generation context
     
-    // Turn-Based Energy System
-    this.energy = 100;           // Current energy for this turn
-    this.maxEnergy = 100;        // Maximum energy (affected by hunger/thirst/shelter)
-    
     // Core Stats (0-100 scale)
+    // NO MORE ENERGY - actions take time instead!
     this.stats = {
       health: 100,
       maxHealth: 100,
@@ -84,98 +82,67 @@ export class Player {
   }
 
   /**
-   * Spend energy on an action
-   * Returns true if successful, false if not enough energy
+   * Update stats based on time passage
+   * Called whenever in-game time advances
+   * @param {number} minutes - In-game minutes that passed
    */
-  spendEnergy(amount) {
-    if (this.energy >= amount) {
-      this.energy -= amount;
-      this.clampStats();
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Check if player has enough energy for an action
-   */
-  hasEnergy(amount) {
-    return this.energy >= amount;
-  }
-
-  /**
-   * Get energy percentage (0-1)
-   */
-  getEnergyPercentage() {
-    return this.energy / this.maxEnergy;
-  }
-
-  /**
-   * Restore energy (called at end of turn)
-   */
-  restoreEnergy(amount) {
-    this.energy = Math.min(this.maxEnergy, this.energy + amount);
-  }
-
-  /**
-   * Calculate max energy based on hunger/thirst
-   * Called when starting a new turn
-   */
-  calculateMaxEnergy() {
-    let baseMax = 100;
+  updateStatsForTime(minutes) {
+    // Passive stat drain over time (very slow)
+    // At 1x speed: 1 real minute = 1 game minute
+    // At 100x speed: actions happen fast but drain is still reasonable
     
-    // Hunger penalty: if hunger < 50, reduce max energy
-    if (this.stats.hunger < 50) {
-      const hungerPenalty = (50 - this.stats.hunger) * 0.4; // Up to -20 at 0 hunger
-      baseMax -= hungerPenalty;
+    const hours = minutes / 60;
+    
+    // Hunger drains slowly (2 points per hour = 50 hours to starve)
+    this.stats.hunger = Math.max(0, this.stats.hunger - (hours * 2));
+    
+    // Thirst drains faster (3 points per hour = 33 hours to critical)
+    this.stats.thirst = Math.max(0, this.stats.thirst - (hours * 3));
+    
+    // Sanity recovers very slowly when not in danger (0.5 per hour)
+    if (this.stats.sanity < 100 && this.stats.hunger > 30 && this.stats.thirst > 30) {
+      this.stats.sanity = Math.min(100, this.stats.sanity + (hours * 0.5));
     }
     
-    // Thirst penalty: if thirst < 50, reduce max energy
-    if (this.stats.thirst < 50) {
-      const thirstPenalty = (50 - this.stats.thirst) * 0.6; // Up to -30 at 0 thirst
-      baseMax -= thirstPenalty;
+    // Health effects from starvation/dehydration
+    if (this.stats.hunger <= 10) {
+      this.stats.health = Math.max(0, this.stats.health - (hours * 2)); // Starving damages health
+    }
+    if (this.stats.thirst <= 10) {
+      this.stats.health = Math.max(0, this.stats.health - (hours * 3)); // Dehydration is worse
     }
     
-    // Health penalty: if health < 50, reduce max energy
-    if (this.stats.health < 50) {
-      const healthPenalty = (50 - this.stats.health) * 0.4; // Up to -20 at 0 health
-      baseMax -= healthPenalty;
-    }
-    
-    // Apply perks and bonuses
-    // TODO: Add perk bonuses here
-    
-    this.maxEnergy = Math.max(20, Math.floor(baseMax)); // Minimum 20 energy
-  }
-
-  /**
-   * Apply night effects (hunger/thirst decay)
-   * Called when player ends turn
-   */
-  applyNightEffects() {
-    // Hunger decreases overnight
-    this.stats.hunger = Math.max(0, this.stats.hunger - 10);
-    
-    // Thirst decreases overnight  
-    this.stats.thirst = Math.max(0, this.stats.thirst - 15);
-    
-    // Sanity slowly recovers during rest
-    this.stats.sanity = Math.min(100, this.stats.sanity + 5);
-    
-    // Recalculate max energy based on current stats
-    this.calculateMaxEnergy();
-    
+    this.clampStats();
     this.checkCriticalStates();
   }
 
   /**
-   * NO MORE TIME-BASED UPDATE
-   * Game is turn-based now, no passive stat decay
+   * Update status effects over time
+   * Called from game loop
    */
   update(deltaTime) {
     // Only update status effect timers if any exist
     if (this.statusEffects.length > 0) {
       this.updateStatusEffects(deltaTime);
+    }
+  }
+  
+  /**
+   * Check for critical health states
+   */
+  checkCriticalStates() {
+    // Death from health
+    if (this.stats.health <= 0) {
+      this.isAlive = false;
+      console.warn('💀 Player has died!');
+    }
+    
+    // Unconscious from low health
+    if (this.stats.health <= 20 && this.stats.health > 0) {
+      this.isConscious = false;
+      console.warn('😵 Player is unconscious!');
+    } else if (this.stats.health > 20) {
+      this.isConscious = true;
     }
   }
 
@@ -256,20 +223,23 @@ export class Player {
   }
 
   /**
-   * Get effective skill level (base + bonuses)
+   * Get effective skill level (base + bonuses - penalties)
    */
   getEffectiveSkill(skillName) {
     const base = this.skills[skillName] || 0;
     const bonuses = this.getTotalBonuses();
     const bonus = bonuses[skillName] || 0;
     
-    // Energy-based penalty
+    // Stat-based penalties (no more energy)
     let penalty = 0;
-    if (this.energy < 30) {
-      penalty = (30 - this.energy) * 0.3;
-    }
     if (this.stats.hunger < 30) {
-      penalty += (30 - this.stats.hunger) * 0.2;
+      penalty += (30 - this.stats.hunger) * 0.3; // Up to -9 at 0 hunger
+    }
+    if (this.stats.thirst < 30) {
+      penalty += (30 - this.stats.thirst) * 0.4; // Up to -12 at 0 thirst
+    }
+    if (this.stats.health < 50) {
+      penalty += (50 - this.stats.health) * 0.2; // Up to -10 at 0 health
     }
     
     return Math.max(0, base + bonus - penalty);
@@ -350,10 +320,6 @@ export class Player {
     if (this.stats.thirst < 20) descriptions.push('severely dehydrated');
     else if (this.stats.thirst < 50) descriptions.push('thirsty');
     
-    // Energy
-    if (this.energy < 20) descriptions.push('exhausted');
-    else if (this.energy < 50) descriptions.push('tired');
-    
     // Sanity
     if (this.stats.sanity < 20) descriptions.push('mentally broken');
     else if (this.stats.sanity < 50) descriptions.push('stressed');
@@ -369,7 +335,6 @@ export class Player {
     this.stats.hunger = Math.max(0, Math.min(100, this.stats.hunger));
     this.stats.thirst = Math.max(0, Math.min(100, this.stats.thirst));
     this.stats.sanity = Math.max(0, Math.min(100, this.stats.sanity));
-    this.energy = Math.max(0, Math.min(this.maxEnergy, this.energy));
   }
 
   /**
@@ -380,8 +345,6 @@ export class Player {
       name: this.name,
       gender: this.gender,
       stats: { ...this.stats },
-      energy: this.energy,
-      maxEnergy: this.maxEnergy,
       skills: { ...this.skills },
       inventory: this.inventory.toJSON(),
       position: { ...this.position },
@@ -397,19 +360,42 @@ export class Player {
    * Deserialize player state from save
    */
   static fromJSON(data) {
-    const player = new Player({ name: data.name, gender: data.gender });
+    // Handle missing or invalid data
+    if (!data) {
+      console.warn('⚠️ No player data provided, creating default player');
+      return new Player({ name: 'Survivor', gender: 'neutral' });
+    }
     
-    Object.assign(player.stats, data.stats);
-    player.energy = data.energy ?? player.energy;
-    player.maxEnergy = data.maxEnergy ?? player.maxEnergy;
-    Object.assign(player.skills, data.skills);
-    player.inventory = Inventory.fromJSON(data.inventory);
-    player.position = data.position;
-    player.daysAlive = data.daysAlive;
-    Object.assign(player.reputation, data.reputation);
-    Object.assign(player.moralBackbone, data.moralBackbone);
+    const player = new Player({ name: data.name || 'Survivor', gender: data.gender || 'neutral' });
+    
+    // Restore stats with defaults
+    if (data.stats) {
+      Object.assign(player.stats, data.stats);
+    }
+    
+    // Restore skills with defaults
+    if (data.skills) {
+      Object.assign(player.skills, data.skills);
+    }
+    
+    // Restore inventory (with itemDatabase)
+    if (data.inventory) {
+      player.inventory = Inventory.fromJSON(data.inventory, itemDB);
+    }
+    
+    // Restore other properties
+    player.position = data.position || { q: 0, r: 0 };
+    player.daysAlive = data.daysAlive || 0;
+    
+    if (data.reputation) {
+      Object.assign(player.reputation, data.reputation);
+    }
+    if (data.moralBackbone) {
+      Object.assign(player.moralBackbone, data.moralBackbone);
+    }
+    
     player.perks = data.perks || [];
-    player.isAlive = data.isAlive;
+    player.isAlive = data.isAlive ?? true;
     
     return player;
   }

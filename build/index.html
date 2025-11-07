@@ -769,346 +769,36 @@ class Inventory {
    * Load from saved data
    */
   static fromJSON(data, itemDatabase) {
-    const inventory2 = new Inventory(data.capacity, data.maxWeight);
-    data.slots.forEach((slotData, index) => {
-      if (slotData) {
-        const item = itemDatabase.get(slotData.itemId);
-        if (item) {
-          item.durability = slotData.durability ?? item.durability;
-          inventory2.slots[index].add(item, slotData.quantity);
-        }
-      }
-    });
-    Object.entries(data.equipment).forEach(([slot, itemData]) => {
-      if (itemData) {
-        const item = itemDatabase.get(itemData.id);
-        if (item) {
-          item.durability = itemData.durability ?? item.durability;
-          inventory2.equipment[slot] = item;
-        }
-      }
-    });
-    return inventory2;
-  }
-}
-class Player {
-  constructor(config = {}) {
-    this.name = config.name || "Survivor";
-    this.gender = config.gender || "male";
-    this.energy = 100;
-    this.maxEnergy = 100;
-    this.stats = {
-      health: 100,
-      maxHealth: 100,
-      hunger: 100,
-      // 100 = full, 0 = starving
-      thirst: 100,
-      // 100 = hydrated, 0 = dehydrated
-      sanity: 100
-      // 100 = stable, 0 = broken
-    };
-    this.statusEffects = [];
-    this.skills = {
-      woodcutting: 0,
-      mining: 0,
-      fishing: 0,
-      crafting: 0,
-      combat: 0,
-      diplomacy: 0,
-      survival: 0
-    };
-    this.inventory = new Inventory();
-    this.position = config.position || { q: 0, r: 0 };
-    this.daysAlive = 0;
-    this.reputation = {
-      castaways: 0,
-      // -100 to +100
-      tidalClan: 0,
-      ridgeClan: 0,
-      mercenaries: 0,
-      island: 0
-      // The island's will itself
-    };
-    this.moralBackbone = {
-      claim: 0,
-      // Colonial democracy path
-      respect: 0,
-      // Native integration path
-      exploit: 0,
-      // Mercenary domination path
-      leave: 0
-      // Escape path
-    };
-    this.perks = [];
-    this.isAlive = true;
-    this.isConscious = true;
-    this.isMoving = false;
-  }
-  /**
-   * Spend energy on an action
-   * Returns true if successful, false if not enough energy
-   */
-  spendEnergy(amount) {
-    if (this.energy >= amount) {
-      this.energy -= amount;
-      this.clampStats();
-      return true;
+    if (!data) {
+      console.warn("⚠️ No inventory data provided, creating default inventory");
+      return new Inventory(20, 50);
     }
-    return false;
-  }
-  /**
-   * Check if player has enough energy for an action
-   */
-  hasEnergy(amount) {
-    return this.energy >= amount;
-  }
-  /**
-   * Get energy percentage (0-1)
-   */
-  getEnergyPercentage() {
-    return this.energy / this.maxEnergy;
-  }
-  /**
-   * Restore energy (called at end of turn)
-   */
-  restoreEnergy(amount) {
-    this.energy = Math.min(this.maxEnergy, this.energy + amount);
-  }
-  /**
-   * Calculate max energy based on hunger/thirst
-   * Called when starting a new turn
-   */
-  calculateMaxEnergy() {
-    let baseMax = 100;
-    if (this.stats.hunger < 50) {
-      const hungerPenalty = (50 - this.stats.hunger) * 0.4;
-      baseMax -= hungerPenalty;
-    }
-    if (this.stats.thirst < 50) {
-      const thirstPenalty = (50 - this.stats.thirst) * 0.6;
-      baseMax -= thirstPenalty;
-    }
-    if (this.stats.health < 50) {
-      const healthPenalty = (50 - this.stats.health) * 0.4;
-      baseMax -= healthPenalty;
-    }
-    this.maxEnergy = Math.max(20, Math.floor(baseMax));
-  }
-  /**
-   * Apply night effects (hunger/thirst decay)
-   * Called when player ends turn
-   */
-  applyNightEffects() {
-    this.stats.hunger = Math.max(0, this.stats.hunger - 10);
-    this.stats.thirst = Math.max(0, this.stats.thirst - 15);
-    this.stats.sanity = Math.min(100, this.stats.sanity + 5);
-    this.calculateMaxEnergy();
-    this.checkCriticalStates();
-  }
-  /**
-   * NO MORE TIME-BASED UPDATE
-   * Game is turn-based now, no passive stat decay
-   */
-  update(deltaTime) {
-    if (this.statusEffects.length > 0) {
-      this.updateStatusEffects(deltaTime);
-    }
-  }
-  // ===== NEW TURN-BASED SUPPORT METHODS =====
-  /**
-   * Consume an item (food, water, medicine)
-   */
-  consumeItem(item) {
-    if (!item.consumable) {
-      console.warn("Item is not consumable:", item.name);
-      return false;
-    }
-    if (item.effects) {
-      Object.entries(item.effects).forEach(([stat, value]) => {
-        if (this.stats[stat] !== void 0) {
-          this.stats[stat] += value;
-          console.log(`${stat}: ${value > 0 ? "+" : ""}${value}`);
+    const capacity = data.capacity || 20;
+    const maxWeight = data.maxWeight || 50;
+    const inventory2 = new Inventory(capacity, maxWeight);
+    if (data.slots && Array.isArray(data.slots)) {
+      data.slots.forEach((slotData, index) => {
+        if (slotData && index < inventory2.slots.length) {
+          const item = itemDatabase.get(slotData.itemId);
+          if (item) {
+            item.durability = slotData.durability ?? item.durability;
+            inventory2.slots[index].add(item, slotData.quantity);
+          }
         }
       });
     }
-    this.clampStats();
-    return true;
-  }
-  /**
-   * Equip an item
-   */
-  equipItem(item, slot) {
-    const result = this.inventory.equip(item, slot);
-    if (result) {
-      console.log(`Equipped ${item.name} to ${slot} slot`);
-    }
-    return result;
-  }
-  /**
-   * Unequip an item
-   */
-  unequipItem(slot) {
-    const result = this.inventory.unequip(slot);
-    if (result) {
-      console.log(`Unequipped ${slot} slot`);
-    }
-    return result;
-  }
-  /**
-   * Get total bonuses from equipment
-   */
-  getTotalBonuses() {
-    const bonuses = {
-      damage: 0,
-      defense: 0,
-      woodcutting: 0,
-      mining: 0,
-      fishing: 0,
-      crafting: 0,
-      capacity: 0,
-      speed: 0
-    };
-    Object.values(this.inventory.equipment).forEach((item) => {
-      if (item && item.effects) {
-        Object.entries(item.effects).forEach(([key, value]) => {
-          if (bonuses[key] !== void 0) {
-            bonuses[key] += value;
+    if (data.equipment && typeof data.equipment === "object") {
+      Object.entries(data.equipment).forEach(([slot, itemData]) => {
+        if (itemData && inventory2.equipment.hasOwnProperty(slot)) {
+          const item = itemDatabase.get(itemData.id);
+          if (item) {
+            item.durability = itemData.durability ?? item.durability;
+            inventory2.equipment[slot] = item;
           }
-        });
-      }
-    });
-    return bonuses;
-  }
-  /**
-   * Get effective skill level (base + bonuses)
-   */
-  getEffectiveSkill(skillName) {
-    const base = this.skills[skillName] || 0;
-    const bonuses = this.getTotalBonuses();
-    const bonus = bonuses[skillName] || 0;
-    let penalty = 0;
-    if (this.energy < 30) {
-      penalty = (30 - this.energy) * 0.3;
+        }
+      });
     }
-    if (this.stats.hunger < 30) {
-      penalty += (30 - this.stats.hunger) * 0.2;
-    }
-    return Math.max(0, base + bonus - penalty);
-  }
-  /**
-   * Gain skill experience
-   */
-  gainSkillXP(skillName, amount) {
-    if (this.skills[skillName] !== void 0) {
-      this.skills[skillName] += amount;
-      console.log(`${skillName} skill increased: +${amount}`);
-    }
-  }
-  /**
-   * Adjust reputation with a faction
-   */
-  adjustReputation(faction, amount) {
-    if (this.reputation[faction] !== void 0) {
-      this.reputation[faction] += amount;
-      this.reputation[faction] = Math.max(-100, Math.min(100, this.reputation[faction]));
-      console.log(`Reputation with ${faction}: ${amount > 0 ? "+" : ""}${amount}`);
-    }
-  }
-  /**
-   * Adjust moral backbone
-   */
-  adjustMoralBackbone(path, amount) {
-    if (this.moralBackbone[path] !== void 0) {
-      this.moralBackbone[path] += amount;
-      console.log(`Moral backbone - ${path}: ${amount > 0 ? "+" : ""}${amount}`);
-    }
-  }
-  /**
-   * Get dominant moral path
-   */
-  getDominantPath() {
-    let maxPath = null;
-    let maxValue = -Infinity;
-    Object.entries(this.moralBackbone).forEach(([path, value]) => {
-      if (value > maxValue) {
-        maxValue = value;
-        maxPath = path;
-      }
-    });
-    return { path: maxPath, value: maxValue };
-  }
-  /**
-   * Move to a new position (now handled by travel system)
-   */
-  moveTo(q, r) {
-    this.position = { q, r };
-    console.log(`Moved to (${q}, ${r})`);
-  }
-  /**
-   * Get current state description (for UI/narrative)
-   */
-  getStateDescription() {
-    const descriptions = [];
-    if (this.stats.health < 20) descriptions.push("critically wounded");
-    else if (this.stats.health < 50) descriptions.push("injured");
-    else if (this.stats.health < 80) descriptions.push("somewhat hurt");
-    if (this.stats.hunger < 20) descriptions.push("starving");
-    else if (this.stats.hunger < 50) descriptions.push("hungry");
-    if (this.stats.thirst < 20) descriptions.push("severely dehydrated");
-    else if (this.stats.thirst < 50) descriptions.push("thirsty");
-    if (this.energy < 20) descriptions.push("exhausted");
-    else if (this.energy < 50) descriptions.push("tired");
-    if (this.stats.sanity < 20) descriptions.push("mentally broken");
-    else if (this.stats.sanity < 50) descriptions.push("stressed");
-    return descriptions.length > 0 ? descriptions.join(", ") : "in good condition";
-  }
-  /**
-   * Clamp all stats to valid ranges
-   */
-  clampStats() {
-    this.stats.health = Math.max(0, Math.min(this.stats.maxHealth, this.stats.health));
-    this.stats.hunger = Math.max(0, Math.min(100, this.stats.hunger));
-    this.stats.thirst = Math.max(0, Math.min(100, this.stats.thirst));
-    this.stats.sanity = Math.max(0, Math.min(100, this.stats.sanity));
-    this.energy = Math.max(0, Math.min(this.maxEnergy, this.energy));
-  }
-  /**
-   * Serialize player state for saving
-   */
-  toJSON() {
-    return {
-      name: this.name,
-      gender: this.gender,
-      stats: { ...this.stats },
-      energy: this.energy,
-      maxEnergy: this.maxEnergy,
-      skills: { ...this.skills },
-      inventory: this.inventory.toJSON(),
-      position: { ...this.position },
-      daysAlive: this.daysAlive,
-      reputation: { ...this.reputation },
-      moralBackbone: { ...this.moralBackbone },
-      perks: [...this.perks],
-      isAlive: this.isAlive
-    };
-  }
-  /**
-   * Deserialize player state from save
-   */
-  static fromJSON(data) {
-    const player2 = new Player({ name: data.name, gender: data.gender });
-    Object.assign(player2.stats, data.stats);
-    player2.energy = data.energy ?? player2.energy;
-    player2.maxEnergy = data.maxEnergy ?? player2.maxEnergy;
-    Object.assign(player2.skills, data.skills);
-    player2.inventory = Inventory.fromJSON(data.inventory);
-    player2.position = data.position;
-    player2.daysAlive = data.daysAlive;
-    Object.assign(player2.reputation, data.reputation);
-    Object.assign(player2.moralBackbone, data.moralBackbone);
-    player2.perks = data.perks || [];
-    player2.isAlive = data.isAlive;
-    return player2;
+    return inventory2;
   }
 }
 class Item {
@@ -1936,6 +1626,309 @@ class ItemDatabase {
   }
 }
 const itemDB = new ItemDatabase();
+class Player {
+  constructor(config = {}) {
+    this.name = config.name || "Survivor";
+    this.gender = config.gender || "male";
+    this.stats = {
+      health: 100,
+      maxHealth: 100,
+      hunger: 100,
+      // 100 = full, 0 = starving
+      thirst: 100,
+      // 100 = hydrated, 0 = dehydrated
+      sanity: 100
+      // 100 = stable, 0 = broken
+    };
+    this.statusEffects = [];
+    this.skills = {
+      woodcutting: 0,
+      mining: 0,
+      fishing: 0,
+      crafting: 0,
+      combat: 0,
+      diplomacy: 0,
+      survival: 0
+    };
+    this.inventory = new Inventory();
+    this.position = config.position || { q: 0, r: 0 };
+    this.daysAlive = 0;
+    this.reputation = {
+      castaways: 0,
+      // -100 to +100
+      tidalClan: 0,
+      ridgeClan: 0,
+      mercenaries: 0,
+      island: 0
+      // The island's will itself
+    };
+    this.moralBackbone = {
+      claim: 0,
+      // Colonial democracy path
+      respect: 0,
+      // Native integration path
+      exploit: 0,
+      // Mercenary domination path
+      leave: 0
+      // Escape path
+    };
+    this.perks = [];
+    this.isAlive = true;
+    this.isConscious = true;
+    this.isMoving = false;
+  }
+  /**
+   * Update stats based on time passage
+   * Called whenever in-game time advances
+   * @param {number} minutes - In-game minutes that passed
+   */
+  updateStatsForTime(minutes) {
+    const hours = minutes / 60;
+    this.stats.hunger = Math.max(0, this.stats.hunger - hours * 2);
+    this.stats.thirst = Math.max(0, this.stats.thirst - hours * 3);
+    if (this.stats.sanity < 100 && this.stats.hunger > 30 && this.stats.thirst > 30) {
+      this.stats.sanity = Math.min(100, this.stats.sanity + hours * 0.5);
+    }
+    if (this.stats.hunger <= 10) {
+      this.stats.health = Math.max(0, this.stats.health - hours * 2);
+    }
+    if (this.stats.thirst <= 10) {
+      this.stats.health = Math.max(0, this.stats.health - hours * 3);
+    }
+    this.clampStats();
+    this.checkCriticalStates();
+  }
+  /**
+   * Update status effects over time
+   * Called from game loop
+   */
+  update(deltaTime) {
+    if (this.statusEffects.length > 0) {
+      this.updateStatusEffects(deltaTime);
+    }
+  }
+  /**
+   * Check for critical health states
+   */
+  checkCriticalStates() {
+    if (this.stats.health <= 0) {
+      this.isAlive = false;
+      console.warn("💀 Player has died!");
+    }
+    if (this.stats.health <= 20 && this.stats.health > 0) {
+      this.isConscious = false;
+      console.warn("😵 Player is unconscious!");
+    } else if (this.stats.health > 20) {
+      this.isConscious = true;
+    }
+  }
+  // ===== NEW TURN-BASED SUPPORT METHODS =====
+  /**
+   * Consume an item (food, water, medicine)
+   */
+  consumeItem(item) {
+    if (!item.consumable) {
+      console.warn("Item is not consumable:", item.name);
+      return false;
+    }
+    if (item.effects) {
+      Object.entries(item.effects).forEach(([stat, value]) => {
+        if (this.stats[stat] !== void 0) {
+          this.stats[stat] += value;
+          console.log(`${stat}: ${value > 0 ? "+" : ""}${value}`);
+        }
+      });
+    }
+    this.clampStats();
+    return true;
+  }
+  /**
+   * Equip an item
+   */
+  equipItem(item, slot) {
+    const result = this.inventory.equip(item, slot);
+    if (result) {
+      console.log(`Equipped ${item.name} to ${slot} slot`);
+    }
+    return result;
+  }
+  /**
+   * Unequip an item
+   */
+  unequipItem(slot) {
+    const result = this.inventory.unequip(slot);
+    if (result) {
+      console.log(`Unequipped ${slot} slot`);
+    }
+    return result;
+  }
+  /**
+   * Get total bonuses from equipment
+   */
+  getTotalBonuses() {
+    const bonuses = {
+      damage: 0,
+      defense: 0,
+      woodcutting: 0,
+      mining: 0,
+      fishing: 0,
+      crafting: 0,
+      capacity: 0,
+      speed: 0
+    };
+    Object.values(this.inventory.equipment).forEach((item) => {
+      if (item && item.effects) {
+        Object.entries(item.effects).forEach(([key, value]) => {
+          if (bonuses[key] !== void 0) {
+            bonuses[key] += value;
+          }
+        });
+      }
+    });
+    return bonuses;
+  }
+  /**
+   * Get effective skill level (base + bonuses - penalties)
+   */
+  getEffectiveSkill(skillName) {
+    const base = this.skills[skillName] || 0;
+    const bonuses = this.getTotalBonuses();
+    const bonus = bonuses[skillName] || 0;
+    let penalty = 0;
+    if (this.stats.hunger < 30) {
+      penalty += (30 - this.stats.hunger) * 0.3;
+    }
+    if (this.stats.thirst < 30) {
+      penalty += (30 - this.stats.thirst) * 0.4;
+    }
+    if (this.stats.health < 50) {
+      penalty += (50 - this.stats.health) * 0.2;
+    }
+    return Math.max(0, base + bonus - penalty);
+  }
+  /**
+   * Gain skill experience
+   */
+  gainSkillXP(skillName, amount) {
+    if (this.skills[skillName] !== void 0) {
+      this.skills[skillName] += amount;
+      console.log(`${skillName} skill increased: +${amount}`);
+    }
+  }
+  /**
+   * Adjust reputation with a faction
+   */
+  adjustReputation(faction, amount) {
+    if (this.reputation[faction] !== void 0) {
+      this.reputation[faction] += amount;
+      this.reputation[faction] = Math.max(-100, Math.min(100, this.reputation[faction]));
+      console.log(`Reputation with ${faction}: ${amount > 0 ? "+" : ""}${amount}`);
+    }
+  }
+  /**
+   * Adjust moral backbone
+   */
+  adjustMoralBackbone(path, amount) {
+    if (this.moralBackbone[path] !== void 0) {
+      this.moralBackbone[path] += amount;
+      console.log(`Moral backbone - ${path}: ${amount > 0 ? "+" : ""}${amount}`);
+    }
+  }
+  /**
+   * Get dominant moral path
+   */
+  getDominantPath() {
+    let maxPath = null;
+    let maxValue = -Infinity;
+    Object.entries(this.moralBackbone).forEach(([path, value]) => {
+      if (value > maxValue) {
+        maxValue = value;
+        maxPath = path;
+      }
+    });
+    return { path: maxPath, value: maxValue };
+  }
+  /**
+   * Move to a new position (now handled by travel system)
+   */
+  moveTo(q, r) {
+    this.position = { q, r };
+    console.log(`Moved to (${q}, ${r})`);
+  }
+  /**
+   * Get current state description (for UI/narrative)
+   */
+  getStateDescription() {
+    const descriptions = [];
+    if (this.stats.health < 20) descriptions.push("critically wounded");
+    else if (this.stats.health < 50) descriptions.push("injured");
+    else if (this.stats.health < 80) descriptions.push("somewhat hurt");
+    if (this.stats.hunger < 20) descriptions.push("starving");
+    else if (this.stats.hunger < 50) descriptions.push("hungry");
+    if (this.stats.thirst < 20) descriptions.push("severely dehydrated");
+    else if (this.stats.thirst < 50) descriptions.push("thirsty");
+    if (this.stats.sanity < 20) descriptions.push("mentally broken");
+    else if (this.stats.sanity < 50) descriptions.push("stressed");
+    return descriptions.length > 0 ? descriptions.join(", ") : "in good condition";
+  }
+  /**
+   * Clamp all stats to valid ranges
+   */
+  clampStats() {
+    this.stats.health = Math.max(0, Math.min(this.stats.maxHealth, this.stats.health));
+    this.stats.hunger = Math.max(0, Math.min(100, this.stats.hunger));
+    this.stats.thirst = Math.max(0, Math.min(100, this.stats.thirst));
+    this.stats.sanity = Math.max(0, Math.min(100, this.stats.sanity));
+  }
+  /**
+   * Serialize player state for saving
+   */
+  toJSON() {
+    return {
+      name: this.name,
+      gender: this.gender,
+      stats: { ...this.stats },
+      skills: { ...this.skills },
+      inventory: this.inventory.toJSON(),
+      position: { ...this.position },
+      daysAlive: this.daysAlive,
+      reputation: { ...this.reputation },
+      moralBackbone: { ...this.moralBackbone },
+      perks: [...this.perks],
+      isAlive: this.isAlive
+    };
+  }
+  /**
+   * Deserialize player state from save
+   */
+  static fromJSON(data) {
+    if (!data) {
+      console.warn("⚠️ No player data provided, creating default player");
+      return new Player({ name: "Survivor", gender: "neutral" });
+    }
+    const player2 = new Player({ name: data.name || "Survivor", gender: data.gender || "neutral" });
+    if (data.stats) {
+      Object.assign(player2.stats, data.stats);
+    }
+    if (data.skills) {
+      Object.assign(player2.skills, data.skills);
+    }
+    if (data.inventory) {
+      player2.inventory = Inventory.fromJSON(data.inventory, itemDB);
+    }
+    player2.position = data.position || { q: 0, r: 0 };
+    player2.daysAlive = data.daysAlive || 0;
+    if (data.reputation) {
+      Object.assign(player2.reputation, data.reputation);
+    }
+    if (data.moralBackbone) {
+      Object.assign(player2.moralBackbone, data.moralBackbone);
+    }
+    player2.perks = data.perks || [];
+    player2.isAlive = data.isAlive ?? true;
+    return player2;
+  }
+}
 class ResourceNode {
   constructor(config) {
     this.id = config.id;
@@ -1957,8 +1950,8 @@ class ResourceNode {
     this.sprite = config.sprite || "🌳";
     this.depletedSprite = config.depletedSprite || "🪵";
     this.size = config.size || "medium";
-    this.gatherTime = config.gatherTime || 3e3;
-    this.energyCost = config.energyCost || 5;
+    this.baseGatherDuration = config.gatherDuration || 30;
+    this.gatherTimeMs = config.gatherTimeMs || 2e3;
     this.isRespawnable = config.isRespawnable !== false;
     this.quality = config.quality || "normal";
     this.onGather = config.onGather || null;
@@ -1974,9 +1967,6 @@ class ResourceNode {
     }
     if (!player2.isAlive || !player2.isConscious) {
       return { success: false, reason: "You are not in condition to gather" };
-    }
-    if (player2.stats.energy < this.energyCost) {
-      return { success: false, reason: "Not enough energy" };
     }
     if (this.requiredTool) {
       const hasTool = this.checkPlayerHasTool(player2, this.requiredTool);
@@ -2033,6 +2023,45 @@ class ResourceNode {
     return null;
   }
   /**
+   * Get gather duration in game minutes
+   * Duration varies by node type, player skill, and tool quality
+   * Range: 15-45 minutes
+   */
+  getGatherDuration(player2) {
+    let duration = this.baseGatherDuration;
+    if (this.requiredSkill) {
+      const skillLevel = player2.getEffectiveSkill(this.requiredSkill);
+      const skillReduction = Math.floor(skillLevel / 10) * 2;
+      duration -= skillReduction;
+    }
+    const tool = this.getEquippedTool(player2);
+    if (tool && tool.rarity !== "common") {
+      const rarityReduction = {
+        uncommon: 2,
+        // -2 minutes
+        rare: 5,
+        // -5 minutes
+        epic: 8,
+        // -8 minutes
+        legendary: 12
+        // -12 minutes
+      };
+      duration -= rarityReduction[tool.rarity] || 0;
+    }
+    const qualityModifiers = {
+      poor: 1.2,
+      // +20% time (harder to extract)
+      normal: 1,
+      // Normal time
+      rich: 0.9,
+      // -10% time (easier to extract)
+      abundant: 0.8
+      // -20% time (very easy)
+    };
+    duration *= qualityModifiers[this.quality];
+    return Math.max(15, Math.ceil(duration));
+  }
+  /**
    * Attempt to gather resources
    */
   gather(player2) {
@@ -2045,7 +2074,6 @@ class ResourceNode {
     }
     const baseYield = this.calculateYield(player2);
     const items = this.generateItems(baseYield);
-    player2.stats.energy -= this.energyCost;
     const tool = this.getEquippedTool(player2);
     if (tool && tool.durability !== void 0) {
       tool.damage(1);
@@ -2430,7 +2458,7 @@ class ResourceNodeManager {
 }
 class GameState {
   constructor() {
-    this.version = "2.0.0";
+    this.version = "4.0.0";
     this.listeners = /* @__PURE__ */ new Map();
     this.player = null;
     this.resourceManager = null;
@@ -2440,13 +2468,16 @@ class GameState {
       gatheringUI: null,
       nodeInspector: null
     };
+    this.isPaused = false;
+    this.timeSpeed = 1;
+    this.currentTime = 0;
     this.state = {
       meta: {
         version: this.version,
         saveDate: null,
         saveName: "Autosave",
         playTime: 0,
-        // seconds
+        // Real-world seconds
         lastTick: Date.now()
       },
       island: {
@@ -2459,7 +2490,10 @@ class GameState {
       // NPCs
       time: {
         day: 1,
-        // Removed: hour, minute, timeScale - now pure turn-based
+        hour: 6,
+        // 0-23 (starts at 6am)
+        minute: 0,
+        // 0-59
         season: "summer"
       },
       flags: {
@@ -2480,7 +2514,6 @@ class GameState {
       }
     };
     this.gameLoopInterval = null;
-    this.isPaused = false;
   }
   /**
    * Initialize game state (new game or load)
@@ -2531,11 +2564,8 @@ class GameState {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
   /**
-   * Game loop - updates time, stats, and all systems
-   */
-  /**
-   * Start game loop (simplified for turn-based system)
-   * Only tracks play time and handles auto-saves
+   * Start game loop (real-time with speed controls)
+   * Time advances continuously based on timeSpeed setting
    */
   startGameLoop() {
     this.gameLoopInterval = setInterval(() => {
@@ -2544,14 +2574,84 @@ class GameState {
       const deltaTime = now - this.state.meta.lastTick;
       this.state.meta.lastTick = now;
       this.state.meta.playTime += deltaTime / 1e3;
-      if (this.resourceManager) {
-        this.resourceManager.update(deltaTime);
+      const gameMinutes = deltaTime / 1e3 * this.timeSpeed;
+      if (gameMinutes > 0) {
+        this.advanceTime(gameMinutes);
       }
       if (Math.floor(this.state.meta.playTime / 300) > Math.floor((this.state.meta.playTime - deltaTime / 1e3) / 300)) {
         this.autoSave();
       }
-      this.emit("gameLoopTick", { deltaTime, playTime: this.state.meta.playTime });
+      this.emit("gameLoopTick", {
+        deltaTime,
+        playTime: this.state.meta.playTime,
+        gameTime: this.currentTime,
+        timeSpeed: this.timeSpeed
+      });
     }, 100);
+  }
+  /**
+   * Advance in-game time by a specified number of minutes
+   * Updates day/hour/minute and all time-dependent systems
+   */
+  advanceTime(minutes) {
+    const oldHour = this.state.time.hour;
+    const oldDay = this.state.time.day;
+    this.currentTime += minutes;
+    const totalMinutes = this.currentTime;
+    this.state.time.day = Math.floor(totalMinutes / 1440) + 1;
+    this.state.time.hour = Math.floor(totalMinutes % 1440 / 60);
+    this.state.time.minute = Math.floor(totalMinutes % 60);
+    if (this.player) {
+      this.player.updateStatsForTime(minutes);
+    }
+    if (this.resourceManager) {
+      this.resourceManager.update(minutes * 60 * 1e3);
+    }
+    const newHour = this.state.time.hour;
+    if (oldHour !== newHour) {
+      this.handleHourChange(oldHour, newHour);
+    }
+    if (oldDay !== this.state.time.day) {
+      this.handleDayChange();
+    }
+    this.emit("timeAdvanced", {
+      minutes,
+      currentTime: this.currentTime,
+      day: this.state.time.day,
+      hour: this.state.time.hour,
+      minute: this.state.time.minute
+    });
+  }
+  /**
+   * Handle hour changes (for time-of-day effects)
+   */
+  handleHourChange(oldHour, newHour) {
+    const timeOfDay = this.getTimeOfDay();
+    this.emit("hourChanged", {
+      oldHour,
+      newHour,
+      timeOfDay
+    });
+  }
+  /**
+   * Handle day changes
+   */
+  handleDayChange() {
+    if (this.resourceManager) ;
+    this.emit("newDay", {
+      day: this.state.time.day
+    });
+    console.log(`🌅 Day ${this.state.time.day} begins`);
+  }
+  /**
+   * Get time of day category
+   */
+  getTimeOfDay() {
+    const hour = this.state.time.hour;
+    if (hour >= 6 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 18) return "afternoon";
+    if (hour >= 18 && hour < 21) return "evening";
+    return "night";
   }
   /**
    * Pause/resume game
@@ -2573,31 +2673,17 @@ class GameState {
     }
   }
   /**
-   * Advance to next day (end turn)
-   * Called when player chooses to end their turn
+   * Set time speed (1, 10, 20, 100)
    */
-  endTurn(recoveryModifier = 1) {
-    this.state.time.day += 1;
-    let recoveryAmount = 0;
-    if (this.player) {
-      recoveryAmount = Math.floor(this.player.maxEnergy * recoveryModifier);
-      this.player.restoreEnergy(recoveryAmount);
-      this.player.applyNightEffects();
-      console.log(`🌙 Night passed. Day ${this.state.time.day} begins.`);
-      console.log(`⚡ Energy: ${this.player.energy}/${this.player.maxEnergy} (recovered ${recoveryAmount})`);
+  setTimeSpeed(speed) {
+    const validSpeeds = [1, 10, 20, 100];
+    if (!validSpeeds.includes(speed)) {
+      console.warn("Invalid time speed:", speed, "Valid speeds:", validSpeeds);
+      return;
     }
-    if (this.resourceManager) {
-      this.resourceManager.regenerateDaily();
-    }
-    this.emit("newDay", {
-      day: this.state.time.day,
-      energyRecovered: recoveryAmount,
-      player: this.player
-    });
-    return {
-      day: this.state.time.day,
-      energyRecovered: recoveryAmount
-    };
+    this.timeSpeed = speed;
+    this.emit("timeSpeedChanged", { speed });
+    console.log(`⏩ Time speed set to ${speed}x`);
   }
   /**
    * Get current day number
@@ -2606,24 +2692,18 @@ class GameState {
     return this.state.time.day;
   }
   /**
-   * Set time scale (how fast time passes)
-   */
-  setTimeScale(scale) {
-    this.state.time.timeScale = scale;
-    this.emit("timeScaleChanged", { timeScale: scale });
-  }
-  /**
    * Get formatted time string
    */
   getTimeString() {
-    const hour = Math.floor(this.state.time.hour);
-    const minute = Math.floor(this.state.time.minute);
+    const hour = this.state.time.hour;
+    const minute = this.state.time.minute;
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour % 12 || 12;
     return `Day ${this.state.time.day}, ${displayHour}:${minute.toString().padStart(2, "0")} ${ampm}`;
   }
   /**
    * Player actions - Consume item
+   * Consuming an item is instant (no time passes)
    */
   consumeItem(itemId) {
     if (!this.player) return false;
@@ -2647,6 +2727,7 @@ class GameState {
   }
   /**
    * Player actions - Gather from resource node
+   * Gathering takes time based on the node's gather duration
    */
   gatherFromNode(nodeId, onProgress = null) {
     if (!this.player || !this.resourceManager) return null;
@@ -2660,11 +2741,12 @@ class GameState {
       this.emit("gatherFailed", { nodeId, reason: canGather.reason });
       return { success: false, reason: canGather.reason };
     }
-    const gatherTime = node.gatherTime;
+    const gatherDuration = node.getGatherDuration ? node.getGatherDuration(this.player) : 30;
+    const gatherTimeMs = 2e3;
     const startTime = Date.now();
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / gatherTime * 100, 100);
+      const progress = Math.min(elapsed / gatherTimeMs * 100, 100);
       if (onProgress) onProgress(progress);
       if (progress >= 100) {
         clearInterval(progressInterval);
@@ -2673,12 +2755,13 @@ class GameState {
           result.items.forEach((item) => {
             this.player.inventory.addItem(item);
           });
-          this.emit("gatherComplete", { nodeId, result });
+          this.advanceTime(gatherDuration);
+          this.emit("gatherComplete", { nodeId, result, duration: gatherDuration });
         }
         return result;
       }
     }, 100);
-    return { success: true, gathering: true };
+    return { success: true, gathering: true, duration: gatherDuration };
   }
   /**
    * Player actions - Equip item
@@ -2827,6 +2910,11 @@ class GameState {
     if (data.meta) {
       this.state.meta = { ...data.meta, lastTick: Date.now() };
     }
+    if (data.timeControl) {
+      this.isPaused = data.timeControl.isPaused || false;
+      this.timeSpeed = data.timeControl.timeSpeed || 1;
+      this.currentTime = data.timeControl.currentTime || 0;
+    }
     if (data.player) {
       this.player = Player.fromJSON(data.player);
     }
@@ -2839,8 +2927,8 @@ class GameState {
           requiredSkill: "woodcutting",
           sprite: "🌳",
           depletedSprite: "🪵",
-          gatherTime: 3e3,
-          energyCost: 5
+          gatherDuration: 30,
+          gatherTimeMs: 2e3
         },
         "rock": {
           resourceType: "stone",
@@ -2849,8 +2937,8 @@ class GameState {
           requiredSkill: "mining",
           sprite: "🪨",
           depletedSprite: "⚫",
-          gatherTime: 4e3,
-          energyCost: 7
+          gatherDuration: 40,
+          gatherTimeMs: 2500
         },
         "berry_bush": {
           resourceType: "berries",
@@ -2858,8 +2946,8 @@ class GameState {
           requiredTool: null,
           sprite: "🫐",
           depletedSprite: "🍂",
-          gatherTime: 2e3,
-          energyCost: 2
+          gatherDuration: 15,
+          gatherTimeMs: 1500
         },
         "coconut_tree": {
           resourceType: "coconut",
@@ -2867,13 +2955,13 @@ class GameState {
           requiredTool: null,
           sprite: "🌴",
           depletedSprite: "🌴",
-          gatherTime: 2500,
-          energyCost: 3
+          gatherDuration: 20,
+          gatherTimeMs: 1800
         }
       };
       this.resourceManager = ResourceNodeManager.fromJSON(data.resourceManager, nodeConfigs);
     }
-    this.emit("stateLoaded", { version: data.version || "2.0.0" });
+    this.emit("stateLoaded", { version: data.version || "4.0.0" });
   }
   /**
    * Migrate legacy v1.0.0 save to v2.0.0 format
@@ -2917,6 +3005,11 @@ class GameState {
       },
       player: this.player ? this.player.toJSON() : null,
       resourceManager: this.resourceManager ? this.resourceManager.toJSON() : null,
+      timeControl: {
+        isPaused: this.isPaused,
+        timeSpeed: this.timeSpeed,
+        currentTime: this.currentTime
+      },
       state: {
         ...this.state,
         meta: void 0
@@ -3992,12 +4085,14 @@ class MainMenu {
     const continueBtn = document.getElementById("btn-continue");
     const newGameBtn = document.getElementById("btn-new-game");
     const loadBtn = document.getElementById("btn-load");
+    const clearSavesBtn = document.getElementById("btn-clear-saves");
     const settingsBtn = document.getElementById("btn-settings");
     const creditsBtn = document.getElementById("btn-credits");
     console.log("🔗 Attaching event listeners:", {
       continueBtn: !!continueBtn,
       newGameBtn: !!newGameBtn,
       loadBtn: !!loadBtn,
+      clearSavesBtn: !!clearSavesBtn,
       settingsBtn: !!settingsBtn,
       creditsBtn: !!creditsBtn
     });
@@ -4012,6 +4107,9 @@ class MainMenu {
     }
     if (loadBtn) {
       loadBtn.onclick = () => this.showLoadMenu();
+    }
+    if (clearSavesBtn) {
+      clearSavesBtn.onclick = () => this.clearOldSaves();
     }
     if (settingsBtn) {
       settingsBtn.onclick = () => this.settingsMenu.open();
@@ -4034,6 +4132,34 @@ class MainMenu {
     }
   }
   /**
+   * Clear old incompatible saves
+   */
+  clearOldSaves() {
+    const confirmMessage = `⚠️ Clear Old Saves?
+
+This will delete ALL saved games and cannot be undone.
+
+Recommended if you're experiencing issues with old saves from previous versions.
+
+Continue?`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith("hedonism")) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+    console.log(`🗑️ Cleared ${keysToRemove.length} save entries`);
+    this.checkContinueButton();
+    alert(`✅ Cleared ${keysToRemove.length} save file(s).
+
+You can now start a fresh game with "New Game".`);
+  }
+  /**
    * Continue from last save
    */
   continueGame() {
@@ -4041,6 +4167,26 @@ class MainMenu {
     if (savedData) {
       try {
         const saveState = JSON.parse(savedData);
+        const saveVersion = saveState.meta?.version || "1.0.0";
+        const currentVersion = window.GAME_VERSION || "3.0.0";
+        if (saveVersion !== currentVersion && !window.COMPATIBLE_VERSIONS?.includes(saveVersion)) {
+          alert(
+            `🚫 INCOMPATIBLE SAVE FILE
+
+Your save is from version ${saveVersion}, but you're running version ${currentVersion}.
+
+❌ This save CANNOT be loaded due to major system changes:
+• Complete rewrite to turn-based energy system
+• New tile interaction system (resources, NPCs, events)
+• Completely new fog of war mechanics
+• Updated save format and game state
+
+🎮 Please use "Clear Old Saves" then start a NEW GAME.
+
+The new version is completely different and much better!`
+          );
+          return;
+        }
         this.gameState.emit("loadGame", saveState);
         const menu = document.getElementById("main-menu");
         if (menu) menu.classList.add("hidden");
@@ -6664,16 +6810,19 @@ class GameView {
           </div>
           
           <div class="hud-right">
-            <button class="hud-btn" id="inventory-btn" title="Inventory (I)">
+            <button class="hud-btn" id="inventory-btn" title="Inventory">
               🎒 <span>Inventory</span>
             </button>
-            <button class="hud-btn" id="crafting-btn" title="Crafting (C)">
-              � <span>Craft</span>
+            <button class="hud-btn" id="crafting-btn" title="Crafting">
+              🔨 <span>Craft</span>
             </button>
-            <button class="hud-btn" id="skills-btn" title="Skills (K)">
+            <button class="hud-btn" id="skills-btn" title="Skills">
               ⭐ <span>Skills</span>
             </button>
-            <button class="hud-btn" id="game-menu-btn" title="Menu (ESC)">
+            <button class="hud-btn primary" id="end-turn-btn" title="End Turn">
+              ⏭️ <span>End Turn</span>
+            </button>
+            <button class="hud-btn" id="game-menu-btn" title="Menu">
               ⚙️ <span>Menu</span>
             </button>
           </div>
@@ -6878,6 +7027,9 @@ class GameView {
     });
     document.getElementById("skills-btn")?.addEventListener("click", () => {
       this.showSkillsMenu();
+    });
+    document.getElementById("end-turn-btn")?.addEventListener("click", () => {
+      window.game.endTurnMenu?.show();
     });
     document.getElementById("game-menu-btn")?.addEventListener("click", () => {
       this.showGameMenu();
@@ -7099,34 +7251,51 @@ class GameView {
   handleTileClick(event) {
     const hex = this.renderer.screenToHex(event.clientX, event.clientY);
     const tile = this.mapData.tiles.get(`${hex.q},${hex.r}`);
-    if (!tile) return;
+    if (!tile) {
+      console.log("❌ No tile found at", hex);
+      return;
+    }
     const dq = Math.abs(hex.q - this.player.position.q);
     const dr = Math.abs(hex.r - this.player.position.r);
     const ds = Math.abs(-hex.q - hex.r - (-this.player.position.q - this.player.position.r));
     const distance = Math.max(dq, dr, ds);
+    console.log("🖱️ Tile clicked:", {
+      position: hex,
+      playerPosition: this.player.position,
+      distance,
+      terrain: tile.terrain,
+      isPassable: tile.isPassable
+    });
     if (distance === 0) {
+      console.log("📍 Clicking current tile - showing tile actions");
       this.showTileActions(tile, hex);
       return;
     }
     const territory = this.territoryManager.getTerritory(hex.q, hex.r);
     const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r) || [];
     const hasPOIs = nodes.length > 0 || territory?.hasNPC || territory?.hasEvent;
+    console.log("🔍 Checking for POIs:", { nodes: nodes.length, hasNPC: territory?.hasNPC, hasEvent: territory?.hasEvent, hasPOIs });
     if (distance === 1 && hasPOIs) {
+      console.log("📍 Adjacent tile with POIs - showing interaction modal");
       if (window.game?.tileInteractionUI) {
         window.game.tileInteractionUI.show(hex, territory);
       } else {
+        console.error("❌ tileInteractionUI not found on window.game!");
         this.addLogEntry("🔍 Something interesting here. Move closer to interact.");
       }
       return;
     }
     if (!tile.isPassable) {
+      console.log("❌ Tile not passable");
       this.addLogEntry("❌ You can't travel there.");
       return;
     }
     if (distance > 1) {
+      console.log("❌ Too far to travel");
       this.addLogEntry("❌ Too far to travel in one move.");
       return;
     }
+    console.log("🚶 Attempting travel to", hex);
     const result = this.travelSystem.startTravel(hex.q, hex.r);
     if (!result.success) {
       this.addLogEntry(`❌ ${result.reason}`);
@@ -10110,90 +10279,72 @@ class TravelSystem {
     this.isTraveling = false;
     this.travelProgress = 0;
     this.travelSpeed = 1;
-    this.baseEnergyCost = 5;
-    this.baseTravelTime = 1e3;
+    this.baseTravelDuration = 10;
     this.eventHandlers = [];
     this.lastEventCheck = Date.now();
     this.eventCheckInterval = 2e3;
   }
   /**
-   * Calculate energy cost for traveling to a tile
-   * Now uses fog-of-war system:
-   * - Undiscovered: 15-20 energy (exploring unknown terrain)
-   * - Discovered but not developed: 8-12 energy (rough paths)
-   * - Player-owned/developed: 3-5 energy (roads/trails)
+   * Calculate travel duration for traveling to a tile (in game minutes)
+   * Duration depends on:
+   * - Discovery state (undiscovered takes longer to navigate)
+   * - Terrain type (harder terrain = longer travel)
+   * - Elevation changes (steep = slower)
+   * Range: 5-15 minutes base, with modifiers
    */
-  calculateEnergyCost(fromPos, toPos) {
+  calculateTravelDuration(fromPos, toPos) {
     const fromTerritory = this.territoryManager.getTerritory(fromPos.q, fromPos.r);
     const toTerritory = this.territoryManager.getTerritory(toPos.q, toPos.r);
     if (!toTerritory) return Infinity;
-    let baseCost;
+    let baseDuration;
     if (!toTerritory.discovered) {
-      baseCost = 17;
+      baseDuration = 15;
     } else if (toTerritory.owner === "player") {
-      baseCost = 4;
+      baseDuration = 5;
     } else {
-      baseCost = 10;
+      baseDuration = 10;
     }
     const terrainMultipliers = {
       "deep_water": 999,
       // Can't travel through deep water
       "water": 2,
-      // Very expensive (swimming/wading)
-      "beach": 1,
+      // Very slow (swimming/wading)
+      "beach": 0.9,
       // Easy
-      "lowland": 1.1,
-      // Slightly harder
-      "plains": 1,
+      "lowland": 1,
+      // Normal
+      "plains": 0.9,
       // Easy
       "scrubland": 1.2,
-      // Brushy terrain
+      // Slower through brush
       "forest": 1.3,
       // Thick vegetation
-      "jungle": 1.4,
+      "jungle": 1.5,
       // Dense jungle
       "highland": 1.4,
       // Uphill
-      "mountain": 1.5,
+      "mountain": 1.6,
       // Steep
-      "swamp": 1.6,
-      // Very difficult
-      "mangrove": 1.3,
+      "swamp": 1.8,
+      // Very slow
+      "mangrove": 1.4,
       // Thick roots
-      "bamboo-forest": 1.2,
-      // Dense but passable
+      "bamboo-forest": 1.3,
+      // Dense but navigable
       "palm-grove": 1.1
       // Relatively open
     };
     const terrainMult = terrainMultipliers[toTerritory.terrain] || 1.2;
-    baseCost *= terrainMult;
+    baseDuration *= terrainMult;
     if (fromTerritory) {
       const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
-      baseCost *= 1 + elevationChange * 0.15;
+      baseDuration *= 1 + elevationChange * 0.2;
     }
     if (!toTerritory.discovered) {
-      const variance = 2.5;
-      baseCost += Math.random() * variance * 2 - variance;
+      const variance = 2;
+      baseDuration += Math.random() * variance * 2 - variance;
     }
-    return Math.max(3, Math.ceil(baseCost));
-  }
-  /**
-   * Calculate travel time for a tile
-   */
-  calculateTravelTime(fromPos, toPos) {
-    const toTerritory = this.territoryManager.getTerritory(toPos.q, toPos.r);
-    if (!toTerritory) return Infinity;
-    let time = this.baseTravelTime;
-    time /= toTerritory.travelSpeedModifier;
-    const terrainSpeed = {
-      "beach": 0.9,
-      "lowland": 1,
-      "forest": 1.3,
-      "highland": 1.5,
-      "mountain": 2
-    };
-    time *= terrainSpeed[toTerritory.terrain] || 1;
-    return Math.ceil(time);
+    return Math.max(5, Math.ceil(baseDuration));
   }
   /**
    * Check if can travel to position
@@ -10201,26 +10352,32 @@ class TravelSystem {
   canTravelTo(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) {
+      console.log("❌ No territory found");
       return false;
     }
-    if (territory.terrain === "deep_water") {
+    if (territory.terrain === "sea" || territory.terrain === "deep_water") {
+      console.log("❌ Cannot travel to water", territory.terrain);
       return false;
     }
     const dq = Math.abs(q - this.currentPosition.q);
     const dr = Math.abs(r - this.currentPosition.r);
     const ds = Math.abs(-q - r - (-this.currentPosition.q - this.currentPosition.r));
     const distance = Math.max(dq, dr, ds);
+    if (distance === 0) {
+      console.log("❌ Already at this tile");
+      return false;
+    }
     if (distance > 1) {
+      console.log("❌ Too far to travel", distance);
       return false;
     }
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (!this.player.hasEnergy(energyCost)) {
-      return false;
-    }
+    const duration = this.calculateTravelDuration(this.currentPosition, { q, r });
+    console.log("✅ Can travel to", { q, r }, "duration:", duration, "minutes");
     return true;
   }
   /**
    * Start traveling to a position
+   * Returns the travel duration so caller can advance game time
    */
   startTravel(q, r) {
     if (!this.canTravelTo(q, r)) {
@@ -10229,32 +10386,22 @@ class TravelSystem {
         reason: "Cannot travel to that location"
       };
     }
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    const travelTime = this.calculateTravelTime(this.currentPosition, { q, r });
+    const travelDuration = this.calculateTravelDuration(this.currentPosition, { q, r });
+    const travelTimeMs = 1e3;
     this.targetPosition = { q, r };
     this.isTraveling = true;
     this.travelProgress = 0;
-    this.travelSpeed = 1e3 / travelTime;
-    const success = this.player.spendEnergy(energyCost);
-    if (!success) {
-      this.isTraveling = false;
-      this.targetPosition = null;
-      return {
-        success: false,
-        reason: "Not enough energy"
-      };
-    }
+    this.travelSpeed = 1e3 / travelTimeMs;
     this.emitEvent("travelStart", {
       from: { ...this.currentPosition },
       to: { q, r },
-      energyCost,
-      travelTime
+      duration: travelDuration
     });
-    console.log(`🚶 Started travel to (${q}, ${r}) - Cost: ${energyCost} energy`);
+    console.log(`🚶 Started travel to (${q}, ${r}) - Duration: ${travelDuration} minutes`);
     return {
       success: true,
-      energyCost,
-      travelTime
+      duration: travelDuration
+      // Return duration for time advancement
     };
   }
   /**
@@ -10459,12 +10606,10 @@ class TravelSystem {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) return null;
     const canTravel = this.canTravelTo(q, r);
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    const travelTime = this.calculateTravelTime(this.currentPosition, { q, r });
+    const duration = this.calculateTravelDuration(this.currentPosition, { q, r });
     return {
       canTravel,
-      energyCost,
-      travelTime,
+      duration,
       territory,
       reason: !canTravel ? this.getCannotTravelReason(q, r) : null
     };
@@ -10475,9 +10620,7 @@ class TravelSystem {
   getCannotTravelReason(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) return "Invalid location";
-    if (territory.terrain === "deep_water") return "Cannot cross deep water";
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (this.player.energy < energyCost) return `Need ${energyCost} energy`;
+    if (territory.terrain === "deep_water" || territory.terrain === "sea") return "Cannot cross water";
     return "Too far away";
   }
   /**
@@ -11287,8 +11430,8 @@ class Recipe {
     this.minimumSkillLevel = data.minimumSkillLevel || 0;
     this.requiredStation = data.requiredStation || null;
     this.output = data.output || [];
-    this.craftTime = data.craftTime || 5e3;
-    this.energyCost = data.energyCost || 10;
+    this.craftDuration = data.craftDuration || 60;
+    this.craftTimeMs = data.craftTimeMs || 3e3;
     this.difficulty = data.difficulty || "easy";
     this.unlocked = data.unlocked !== false;
     this.unlockConditions = data.unlockConditions || null;
@@ -11313,9 +11456,6 @@ class Recipe {
           };
         }
       }
-    }
-    if (player2.stats.energy < this.energyCost) {
-      return { success: false, reason: "Not enough energy" };
     }
     if (this.requiredSkill && this.minimumSkillLevel > 0) {
       const skillLevel = player2.getEffectiveSkill(this.requiredSkill);
@@ -11366,6 +11506,47 @@ class Recipe {
     return false;
   }
   /**
+   * Get crafting duration in game minutes
+   * Duration varies by difficulty, player skill, and tool quality
+   * Range: 30 minutes to 6 hours
+   */
+  getCraftDuration(player2) {
+    let duration = this.craftDuration;
+    const difficultyBase = {
+      easy: 30,
+      // 30 minutes
+      medium: 60,
+      // 1 hour
+      hard: 120,
+      // 2 hours
+      expert: 240
+      // 4 hours
+    };
+    duration = difficultyBase[this.difficulty] || 60;
+    if (this.requiredSkill) {
+      const skillLevel = player2.getEffectiveSkill(this.requiredSkill);
+      const skillReduction = Math.floor(skillLevel / 10) * 5;
+      duration -= skillReduction;
+    }
+    if (this.requiredTool) {
+      const tool = this.getEquippedTool(player2);
+      if (tool && tool.rarity !== "common") {
+        const rarityReduction = {
+          uncommon: 5,
+          // -5 minutes
+          rare: 10,
+          // -10 minutes
+          epic: 20,
+          // -20 minutes
+          legendary: 30
+          // -30 minutes
+        };
+        duration -= rarityReduction[tool.rarity] || 0;
+      }
+    }
+    return Math.max(30, Math.ceil(duration));
+  }
+  /**
    * Get the equipped tool being used
    */
   getEquippedTool(player2) {
@@ -11398,7 +11579,6 @@ class Recipe {
     for (const ingredient of this.ingredients) {
       player2.inventory.removeItem(ingredient.itemId, ingredient.quantity);
     }
-    player2.stats.energy -= this.energyCost;
     if (this.requiredTool) {
       const tool = this.getEquippedTool(player2);
       if (tool && tool.durability !== null) {
@@ -11865,8 +12045,9 @@ class RecipeDatabase {
 }
 const recipeDB = new RecipeDatabase();
 class CraftingUI {
-  constructor(player2) {
+  constructor(player2, gameState2) {
     this.player = player2;
+    this.gameState = gameState2;
     this.isVisible = false;
     this.selectedRecipe = null;
     this.currentCategory = "all";
@@ -12138,7 +12319,7 @@ class CraftingUI {
 
       <div class="details-footer">
         <div class="craft-time">
-          ⏱️ ${(recipe.craftTime / 1e3).toFixed(1)}s
+          ⏱️ ${recipe.getCraftDuration ? recipe.getCraftDuration(this.player) + " min" : Math.floor(recipe.craftDuration) + " min"}
         </div>
         <div class="craft-xp">
           ⭐ +${recipe.baseXP} XP
@@ -12266,18 +12447,23 @@ class CraftingUI {
     this.isCrafting = true;
     const current = this.craftingQueue[0];
     const recipe = current.recipe;
+    const craftDuration = recipe.getCraftDuration ? recipe.getCraftDuration(this.player) : recipe.craftDuration;
+    const craftTimeMs = recipe.craftTimeMs || 3e3;
     const startTime = Date.now();
     const updateInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      current.progress = Math.min(100, elapsed / recipe.craftTime * 100);
+      current.progress = Math.min(100, elapsed / craftTimeMs * 100);
       if (this.isVisible) {
         this.render();
       }
     }, 100);
-    await new Promise((resolve) => setTimeout(resolve, recipe.craftTime));
+    await new Promise((resolve) => setTimeout(resolve, craftTimeMs));
     clearInterval(updateInterval);
     const result = recipe.craft(this.player);
     if (result.success) {
+      if (this.gameState && this.gameState.advanceTime) {
+        this.gameState.advanceTime(craftDuration);
+      }
       const itemNames = result.items.map((i) => i.item.name).join(", ");
       const qualityText = result.quality !== "normal" ? ` (${result.quality})` : "";
       this.showNotification(`✓ Crafted ${itemNames}${qualityText}`, "success");
@@ -12502,8 +12688,7 @@ class MapTravelUI {
     if (travelInfo) {
       if (travelInfo.canTravel) {
         content += `<div class="tooltip-travel">
-          ⚡ ${travelInfo.energyCost} energy
-          ⏱️ ${(travelInfo.travelTime / 1e3).toFixed(1)}s
+          ⏱️ ${travelInfo.duration} minutes travel
         </div>`;
       } else {
         content += `<div class="tooltip-error">${travelInfo.reason}</div>`;
@@ -12640,7 +12825,7 @@ class MapTravelUI {
       const isDeveloped = territory.owner === "player" && territory.controlStrength >= 60;
       const hasActiveVision = inSightRange || isDeveloped;
       if (!territory.discovered) {
-        ctx.fillStyle = "#0a0f1a";
+        ctx.fillStyle = "#1a1a1a";
         ctx.fill();
         const gradient = ctx.createRadialGradient(
           size * 0.2,
@@ -12650,23 +12835,23 @@ class MapTravelUI {
           0,
           size * 1.2
         );
-        gradient.addColorStop(0, "rgba(30, 41, 59, 0.8)");
-        gradient.addColorStop(0.5, "rgba(15, 23, 42, 0.9)");
-        gradient.addColorStop(1, "rgba(5, 8, 15, 1)");
+        gradient.addColorStop(0, "rgba(80, 80, 80, 0.9)");
+        gradient.addColorStop(0.5, "rgba(60, 60, 60, 0.95)");
+        gradient.addColorStop(1, "rgba(30, 30, 30, 1)");
         ctx.fillStyle = gradient;
         ctx.fill();
       } else if (territory.discovered && !territory.visited) {
         const veilGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-        veilGradient.addColorStop(0, "rgba(30, 41, 59, 0.5)");
-        veilGradient.addColorStop(0.6, "rgba(15, 23, 42, 0.6)");
-        veilGradient.addColorStop(1, "rgba(10, 15, 26, 0.7)");
+        veilGradient.addColorStop(0, "rgba(150, 150, 150, 0.5)");
+        veilGradient.addColorStop(0.6, "rgba(120, 120, 120, 0.6)");
+        veilGradient.addColorStop(1, "rgba(80, 80, 80, 0.7)");
         ctx.fillStyle = veilGradient;
         ctx.fill();
       } else if (territory.visited && !hasActiveVision) {
         const dimGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-        dimGradient.addColorStop(0, "rgba(15, 23, 42, 0.3)");
-        dimGradient.addColorStop(0.7, "rgba(10, 15, 26, 0.4)");
-        dimGradient.addColorStop(1, "rgba(5, 8, 15, 0.5)");
+        dimGradient.addColorStop(0, "rgba(100, 100, 100, 0.25)");
+        dimGradient.addColorStop(0.7, "rgba(70, 70, 70, 0.35)");
+        dimGradient.addColorStop(1, "rgba(40, 40, 40, 0.45)");
         ctx.fillStyle = dimGradient;
         ctx.fill();
       }
@@ -12757,7 +12942,7 @@ class MapTravelUI {
    */
   showTravelNotification(result) {
     this.showNotification(
-      `Traveling... (${result.energyCost} energy, ${(result.travelTime / 1e3).toFixed(1)}s)`,
+      `Traveling... (${result.duration} minutes)`,
       "info"
     );
   }
@@ -12845,372 +13030,6 @@ class MapTravelUI {
     if (this.fogLayer) this.fogLayer.remove();
     if (this.markerLayer) this.markerLayer.remove();
     this.hideTooltip();
-  }
-}
-class PlayerHUD {
-  constructor(player2, onEndTurn) {
-    this.player = player2;
-    this.onEndTurn = onEndTurn;
-    this.container = null;
-    this.expanded = false;
-    this.updateInterval = null;
-    this.createUI();
-    this.startUpdating();
-  }
-  /**
-   * Create HUD UI
-   */
-  createUI() {
-    this.container = document.createElement("div");
-    this.container.className = "player-hud";
-    const compact = this.createCompactView();
-    this.container.appendChild(compact);
-    const expanded = this.createExpandedView();
-    this.container.appendChild(expanded);
-    this.container.addEventListener("click", () => this.toggle());
-    document.body.appendChild(this.container);
-  }
-  /**
-   * Create compact stat bars
-   */
-  createCompactView() {
-    const compact = document.createElement("div");
-    compact.className = "hud-compact";
-    const header = document.createElement("div");
-    header.className = "hud-header";
-    const avatar = document.createElement("div");
-    avatar.className = "hud-avatar";
-    avatar.textContent = "🏝️";
-    header.appendChild(avatar);
-    const info = document.createElement("div");
-    info.className = "hud-info";
-    const name = document.createElement("div");
-    name.className = "hud-name";
-    name.textContent = this.player.name;
-    info.appendChild(name);
-    const day = document.createElement("div");
-    day.className = "hud-day";
-    day.textContent = `Day ${this.player.daysAlive}`;
-    info.appendChild(day);
-    header.appendChild(info);
-    compact.appendChild(header);
-    const stats = ["health", "hunger", "thirst"];
-    stats.forEach((stat) => {
-      const bar2 = this.createStatBar(stat, true);
-      compact.appendChild(bar2);
-    });
-    const energyDisplay = document.createElement("div");
-    energyDisplay.className = "energy-display";
-    energyDisplay.innerHTML = `
-      <span class="energy-icon">⚡</span>
-      <span class="energy-value">${this.player.energy}/${this.player.maxEnergy}</span>
-    `;
-    compact.appendChild(energyDisplay);
-    const endTurnBtn = document.createElement("button");
-    endTurnBtn.className = "end-turn-button";
-    endTurnBtn.textContent = "End Turn";
-    endTurnBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (this.onEndTurn) {
-        this.onEndTurn();
-      }
-    });
-    compact.appendChild(endTurnBtn);
-    return compact;
-  }
-  /**
-   * Create expanded detail view
-   */
-  createExpandedView() {
-    const expanded = document.createElement("div");
-    expanded.className = "hud-expanded";
-    const statsSection = document.createElement("div");
-    statsSection.className = "hud-section";
-    const statsTitle = document.createElement("h3");
-    statsTitle.textContent = "STATS";
-    statsSection.appendChild(statsTitle);
-    ["health", "hunger", "thirst", "energy", "sanity"].forEach((stat) => {
-      const row = this.createStatRow(stat);
-      statsSection.appendChild(row);
-    });
-    expanded.appendChild(statsSection);
-    const bonusesSection = document.createElement("div");
-    bonusesSection.className = "hud-section hud-bonuses";
-    const bonusesTitle = document.createElement("h3");
-    bonusesTitle.textContent = "BONUSES";
-    bonusesSection.appendChild(bonusesTitle);
-    const bonusesList = document.createElement("div");
-    bonusesList.className = "bonuses-list";
-    bonusesSection.appendChild(bonusesList);
-    expanded.appendChild(bonusesSection);
-    const timeSection = document.createElement("div");
-    timeSection.className = "hud-section hud-time";
-    const timeDisplay = document.createElement("div");
-    timeDisplay.className = "time-display";
-    timeSection.appendChild(timeDisplay);
-    expanded.appendChild(timeSection);
-    return expanded;
-  }
-  /**
-   * Create a stat bar (compact)
-   */
-  createStatBar(stat, compact = false) {
-    const container = document.createElement("div");
-    container.className = `stat-bar ${compact ? "compact" : ""}`;
-    container.dataset.stat = stat;
-    const icon = document.createElement("div");
-    icon.className = "stat-icon";
-    icon.textContent = this.getStatIcon(stat);
-    container.appendChild(icon);
-    const barBg = document.createElement("div");
-    barBg.className = "stat-bar-bg";
-    const barFill = document.createElement("div");
-    barFill.className = "stat-bar-fill";
-    barBg.appendChild(barFill);
-    container.appendChild(barBg);
-    if (!compact) {
-      const value = document.createElement("div");
-      value.className = "stat-value";
-      container.appendChild(value);
-    }
-    return container;
-  }
-  /**
-   * Create a stat row (expanded)
-   */
-  createStatRow(stat) {
-    const row = document.createElement("div");
-    row.className = "stat-row";
-    row.dataset.stat = stat;
-    const label = document.createElement("div");
-    label.className = "stat-label";
-    label.textContent = this.getStatLabel(stat);
-    row.appendChild(label);
-    const barContainer = document.createElement("div");
-    barContainer.className = "stat-bar-container";
-    const barBg = document.createElement("div");
-    barBg.className = "stat-bar-bg";
-    const barFill = document.createElement("div");
-    barFill.className = "stat-bar-fill";
-    barBg.appendChild(barFill);
-    barContainer.appendChild(barBg);
-    row.appendChild(barContainer);
-    const value = document.createElement("div");
-    value.className = "stat-value";
-    row.appendChild(value);
-    return row;
-  }
-  /**
-   * Get icon for stat
-   */
-  getStatIcon(stat) {
-    const icons = {
-      health: "❤️",
-      hunger: "🍖",
-      thirst: "💧",
-      energy: "⚡",
-      sanity: "🧠"
-    };
-    return icons[stat] || "?";
-  }
-  /**
-   * Get label for stat
-   */
-  getStatLabel(stat) {
-    const labels = {
-      health: "Health",
-      hunger: "Hunger",
-      thirst: "Thirst",
-      energy: "Energy",
-      sanity: "Sanity"
-    };
-    return labels[stat] || stat;
-  }
-  /**
-   * Get color for stat value
-   */
-  getStatColor(stat, value) {
-    if (stat === "health") {
-      if (value <= 20) return "#e74c3c";
-      if (value <= 40) return "#e67e22";
-      if (value <= 60) return "#f39c12";
-      return "#2ecc71";
-    }
-    if (stat === "hunger" || stat === "thirst" || stat === "energy") {
-      if (value <= 20) return "#e74c3c";
-      if (value <= 40) return "#e67e22";
-      if (value <= 60) return "#f39c12";
-      return "#2ecc71";
-    }
-    if (stat === "sanity") {
-      if (value <= 20) return "#9b59b6";
-      if (value <= 40) return "#e74c3c";
-      if (value <= 60) return "#f39c12";
-      return "#2ecc71";
-    }
-    return "#3498db";
-  }
-  /**
-   * Toggle expanded view
-   */
-  toggle() {
-    this.expanded = !this.expanded;
-    if (this.expanded) {
-      this.container.classList.add("expanded");
-    } else {
-      this.container.classList.remove("expanded");
-    }
-  }
-  /**
-   * Update HUD display
-   */
-  update() {
-    const dayDisplay = this.container.querySelector(".hud-day");
-    if (dayDisplay) {
-      dayDisplay.textContent = `Day ${this.player.daysAlive}`;
-    }
-    const energyDisplay = this.container.querySelector(".energy-display .energy-value");
-    if (energyDisplay) {
-      energyDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
-      const percentage = this.player.energy / this.player.maxEnergy * 100;
-      if (percentage <= 20) {
-        energyDisplay.style.color = "#e74c3c";
-      } else if (percentage <= 40) {
-        energyDisplay.style.color = "#e67e22";
-      } else {
-        energyDisplay.style.color = "#2ecc71";
-      }
-    }
-    ["health", "hunger", "thirst"].forEach((stat) => {
-      const bar2 = this.container.querySelector(`.hud-compact .stat-bar[data-stat="${stat}"]`);
-      if (bar2) {
-        const fill = bar2.querySelector(".stat-bar-fill");
-        const maxValue = stat === "health" ? this.player.stats.maxHealth : 100;
-        const value = this.player.stats[stat];
-        const percentage = value / maxValue * 100;
-        fill.style.width = `${percentage}%`;
-        fill.style.backgroundColor = this.getStatColor(stat, value);
-        if (value <= 20) {
-          fill.classList.add("critical");
-        } else {
-          fill.classList.remove("critical");
-        }
-      }
-    });
-    if (this.expanded) {
-      ["health", "hunger", "thirst", "sanity"].forEach((stat) => {
-        const row = this.container.querySelector(`.hud-expanded .stat-row[data-stat="${stat}"]`);
-        if (row) {
-          const fill = row.querySelector(".stat-bar-fill");
-          const valueDisplay = row.querySelector(".stat-value");
-          const maxValue = stat === "health" ? this.player.stats.maxHealth : 100;
-          const value = this.player.stats[stat];
-          const percentage = value / maxValue * 100;
-          fill.style.width = `${percentage}%`;
-          fill.style.backgroundColor = this.getStatColor(stat, value);
-          if (stat === "health") {
-            valueDisplay.textContent = `${Math.round(value)}/${maxValue}`;
-          } else {
-            valueDisplay.textContent = `${Math.round(value)}%`;
-          }
-        }
-      });
-      const energyRow = this.container.querySelector(`.hud-expanded .stat-row[data-stat="energy"]`);
-      if (energyRow) {
-        const fill = energyRow.querySelector(".stat-bar-fill");
-        const valueDisplay = energyRow.querySelector(".stat-value");
-        const percentage = this.player.energy / this.player.maxEnergy * 100;
-        fill.style.width = `${percentage}%`;
-        fill.style.backgroundColor = this.getStatColor("energy", this.player.energy);
-        valueDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
-      }
-      this.updateBonuses();
-      this.updateTime();
-    }
-  }
-  /**
-   * Update equipment bonuses
-   */
-  updateBonuses() {
-    const list = this.container.querySelector(".bonuses-list");
-    if (!list) return;
-    list.innerHTML = "";
-    const bonuses = this.player.getTotalBonuses();
-    const activeBonuses = Object.entries(bonuses).filter(([key, value]) => value !== 0);
-    if (activeBonuses.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "bonuses-empty";
-      empty.textContent = "No active bonuses";
-      list.appendChild(empty);
-      return;
-    }
-    activeBonuses.forEach(([key, value]) => {
-      const item = document.createElement("div");
-      item.className = "bonus-item";
-      const name = document.createElement("span");
-      name.className = "bonus-name";
-      name.textContent = this.formatBonusName(key);
-      item.appendChild(name);
-      const valueSpan = document.createElement("span");
-      valueSpan.className = `bonus-value ${value > 0 ? "positive" : "negative"}`;
-      valueSpan.textContent = value > 0 ? `+${value}` : value;
-      item.appendChild(valueSpan);
-      list.appendChild(item);
-    });
-  }
-  /**
-   * Update survival time display
-   */
-  updateTime() {
-    const display = this.container.querySelector(".time-display");
-    if (!display) return;
-    const days = Math.floor(this.player.daysAlive);
-    display.innerHTML = `
-      <div class="time-label">Survived</div>
-      <div class="time-value">${days} ${days === 1 ? "day" : "days"}</div>
-    `;
-  }
-  /**
-   * Format bonus name
-   */
-  formatBonusName(key) {
-    const names = {
-      damage: "Damage",
-      defense: "Defense",
-      woodcutting: "Woodcutting",
-      mining: "Mining",
-      fishing: "Fishing",
-      crafting: "Crafting",
-      capacity: "Capacity",
-      speed: "Speed"
-    };
-    return names[key] || key;
-  }
-  /**
-   * Start automatic updates
-   */
-  startUpdating() {
-    this.updateInterval = setInterval(() => {
-      this.update();
-    }, 100);
-  }
-  /**
-   * Stop automatic updates
-   */
-  stopUpdating() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-  }
-  /**
-   * Cleanup
-   */
-  destroy() {
-    this.stopUpdating();
-    if (this.container && this.container.parentNode) {
-      this.container.parentNode.removeChild(this.container);
-    }
   }
 }
 class EndTurnMenu {
@@ -13465,6 +13284,7 @@ class TileInteractionUI {
    * Show interaction modal for a tile
    */
   show(position, territory) {
+    console.log("🎯 TileInteractionUI.show() called", { position, territory });
     this.currentPosition = position;
     this.currentTile = territory;
     this.hide();
@@ -13472,16 +13292,19 @@ class TileInteractionUI {
     const hasNPC = territory?.hasNPC;
     const hasEvent = territory?.hasEvent;
     const isPlayerTerritory = territory?.owner === "player";
+    console.log("📍 POIs found:", { nodes: nodes.length, hasNPC, hasEvent, isPlayerTerritory });
     this.modal = document.createElement("div");
     this.modal.className = "modal-overlay tile-interaction-modal";
     this.modal.id = "tile-interaction-modal";
+    this.modal.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10000;";
+    console.log("🎨 Modal element created:", this.modal);
     const terrainName = this.getTerrainDisplayName(territory?.terrain || "unknown");
     const locationInfo = this.getLocationInfo(territory);
     this.modal.innerHTML = `
-      <div class="modal-content tile-interaction-content">
-        <div class="modal-header">
-          <h2>📍 ${terrainName}</h2>
-          <button class="close-btn" id="close-tile-interaction">✕</button>
+      <div class="modal-content tile-interaction-content" style="background: white; border-radius: 16px; padding: 20px; max-width: 600px; max-height: 85vh; overflow-y: auto;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; border-radius: 12px 12px 0 0; margin: -20px -20px 20px -20px;">
+          <h2 style="margin: 0; font-size: 1.5rem; color: white;">📍 ${terrainName}</h2>
+          <button class="close-btn" id="close-tile-interaction" style="background: none; border: none; font-size: 2rem; color: white; cursor: pointer; padding: 0; width: 40px; height: 40px;">✕</button>
         </div>
         
         <div class="modal-body">
@@ -13497,12 +13320,14 @@ class TileInteractionUI {
           ${this.buildQuickActions(territory)}
         </div>
         
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="tile-interaction-close">Close</button>
+        <div class="modal-footer" style="margin-top: 20px; text-align: right;">
+          <button class="btn btn-secondary" id="tile-interaction-close" style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
         </div>
       </div>
     `;
     document.body.appendChild(this.modal);
+    console.log("✅ Modal appended to body. Body children:", document.body.children.length);
+    console.log("📍 Modal in DOM:", document.getElementById("tile-interaction-modal"));
     this.setupEventListeners();
   }
   /**
@@ -13768,6 +13593,165 @@ class TileInteractionUI {
     }
   }
 }
+class TimeControlUI {
+  constructor(gameState2) {
+    this.gameState = gameState2;
+    this.container = null;
+    this.init();
+  }
+  /**
+   * Initialize the UI
+   */
+  init() {
+    this.container = document.createElement("div");
+    this.container.id = "time-control-ui";
+    this.container.className = "time-control-container";
+    document.body.appendChild(this.container);
+    this.render();
+    this.startUpdateLoop();
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      switch (e.key.toLowerCase()) {
+        case " ":
+          e.preventDefault();
+          this.togglePause();
+          break;
+        case "1":
+          this.setSpeed(1);
+          break;
+        case "2":
+          this.setSpeed(10);
+          break;
+        case "3":
+          this.setSpeed(20);
+          break;
+        case "4":
+          this.setSpeed(100);
+          break;
+      }
+    });
+  }
+  /**
+   * Render the UI
+   */
+  render() {
+    const isPaused = this.gameState.isPaused;
+    const speed = this.gameState.timeSpeed;
+    const timeString = this.gameState.getTimeString();
+    const timeOfDay = this.gameState.getTimeOfDay();
+    this.container.innerHTML = `
+      <div class="time-display-section">
+        <div class="time-icon">${this.getTimeOfDayIcon(timeOfDay)}</div>
+        <div class="time-info">
+          <div class="time-string">${timeString}</div>
+          <div class="time-of-day">${timeOfDay}</div>
+        </div>
+      </div>
+      
+      <div class="speed-controls">
+        <button 
+          class="speed-btn pause-btn ${isPaused ? "active" : ""}" 
+          data-speed="pause"
+          title="Pause (Space)"
+        >
+          ${isPaused ? "▶️" : "⏸️"}
+        </button>
+        <button 
+          class="speed-btn ${!isPaused && speed === 1 ? "active" : ""}" 
+          data-speed="1"
+          title="Normal Speed (1)"
+        >
+          1x
+        </button>
+        <button 
+          class="speed-btn ${!isPaused && speed === 10 ? "active" : ""}" 
+          data-speed="10"
+          title="Fast (2)"
+        >
+          10x
+        </button>
+        <button 
+          class="speed-btn ${!isPaused && speed === 20 ? "active" : ""}" 
+          data-speed="20"
+          title="Very Fast (3)"
+        >
+          20x
+        </button>
+        <button 
+          class="speed-btn ${!isPaused && speed === 100 ? "active" : ""}" 
+          data-speed="100"
+          title="Ultra Fast (4)"
+        >
+          100x
+        </button>
+      </div>
+    `;
+    this.container.querySelectorAll(".speed-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const speedValue = btn.dataset.speed;
+        if (speedValue === "pause") {
+          this.togglePause();
+        } else {
+          this.setSpeed(parseInt(speedValue));
+        }
+      });
+    });
+  }
+  /**
+   * Get icon for time of day
+   */
+  getTimeOfDayIcon(timeOfDay) {
+    const icons = {
+      "dawn": "🌅",
+      "morning": "☀️",
+      "afternoon": "🌤️",
+      "evening": "🌇",
+      "night": "🌙"
+    };
+    return icons[timeOfDay] || "🌞";
+  }
+  /**
+   * Toggle pause
+   */
+  togglePause() {
+    this.gameState.togglePause();
+    this.render();
+  }
+  /**
+   * Set time speed
+   */
+  setSpeed(speed) {
+    if (this.gameState.isPaused) {
+      this.gameState.resume();
+    }
+    this.gameState.setTimeSpeed(speed);
+    this.render();
+  }
+  /**
+   * Start update loop to refresh time display
+   */
+  startUpdateLoop() {
+    setInterval(() => {
+      const timeString = this.gameState.getTimeString();
+      const timeOfDay = this.gameState.getTimeOfDay();
+      const timeStringEl = this.container.querySelector(".time-string");
+      const timeOfDayEl = this.container.querySelector(".time-of-day");
+      const timeIcon = this.container.querySelector(".time-icon");
+      if (timeStringEl) timeStringEl.textContent = timeString;
+      if (timeOfDayEl) timeOfDayEl.textContent = timeOfDay;
+      if (timeIcon) timeIcon.textContent = this.getTimeOfDayIcon(timeOfDay);
+    }, 1e3);
+  }
+  /**
+   * Show/hide UI
+   */
+  show() {
+    this.container.style.display = "flex";
+  }
+  hide() {
+    this.container.style.display = "none";
+  }
+}
 const start = { "text": "<h2>Welcome to Hedonism Island</h2><p>You arrive at a luxurious tropical resort known for its... <em>permissive</em> atmosphere.</p><p>The sun beats down on white sand beaches as you step off the boat.</p>", "choices": [{ "text": "Explore the beach resort", "next": "beach" }, { "text": "Check into your villa", "next": "villa" }, { "text": "Visit the main bar", "next": "bar" }] };
 const beach = { "text": "<h2>Beach Resort</h2><p>The pristine beach stretches before you. Beautiful people lounge on chairs, some clothed, some not.</p>", "aiGenerate": { "text": { "prompt": "Generate a brief encounter with an attractive stranger at a beach resort. Be flirty and suggestive. This is for an adult game. Keep it 2-3 sentences.", "options": { "temperature": 0.9, "max_tokens": 150 } }, "image": { "prompt": "beautiful person at tropical beach, attractive, beach resort, photorealistic" } }, "choices": [{ "text": "Return to entrance", "next": "start" }] };
 const villa = { "text": "<h2>Your Private Villa</h2><p>A spacious suite with an ocean view. The bed looks very comfortable.</p>", "choices": [{ "text": "Return to entrance", "next": "start" }] };
@@ -13778,6 +13762,8 @@ const scenes = {
   villa,
   bar
 };
+const GAME_VERSION = "4.0.0";
+const COMPATIBLE_VERSIONS = ["4.0.0"];
 const settingsManager = new SettingsManager();
 const gameState = new GameState();
 const ai = new PerchanceAI();
@@ -13803,10 +13789,13 @@ let mapTravelUI = null;
 let playerHUD = null;
 let endTurnMenu = null;
 let tileInteractionUI = null;
+let timeControlUI = null;
 function showGlobalOptionsMenu() {
   console.log("⚙️ Opening options menu...");
   optionsMenu.show();
 }
+window.GAME_VERSION = GAME_VERSION;
+window.COMPATIBLE_VERSIONS = COMPATIBLE_VERSIONS;
 window.game = {
   state: gameState,
   settings: settingsManager,
@@ -13905,9 +13894,9 @@ function initializeGameWorld(existingSeed = null) {
   endTurnMenu = new EndTurnMenu(gameState);
   inventoryUI = new InventoryUI(inventory, player);
   gatheringUI = new GatheringUI(player, inventory, resourceNodeManager);
-  craftingUI = new CraftingUI(player);
+  craftingUI = new CraftingUI(player, gameState);
   mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
-  playerHUD = new PlayerHUD(player, () => endTurnMenu.show());
+  timeControlUI = new TimeControlUI(gameState);
   tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager);
   console.log(`✨ All UI systems initialized`);
   setupTravelEvents();
@@ -13924,9 +13913,10 @@ function initializeGameWorld(existingSeed = null) {
   window.game.gatheringUI = gatheringUI;
   window.game.craftingUI = craftingUI;
   window.game.mapTravelUI = mapTravelUI;
+  window.game.timeControlUI = timeControlUI;
+  window.game.tileInteractionUI = tileInteractionUI;
   window.game.playerHUD = playerHUD;
   window.game.endTurnMenu = endTurnMenu;
-  window.game.tileInteractionUI = tileInteractionUI;
   console.log(`🎮 Game world fully initialized!`);
   return { mapEngine, gameView };
 }
@@ -13936,7 +13926,10 @@ function spawnInitialResources(startPos, mapData) {
 }
 function setupTravelEvents() {
   travelSystem.on("travelStart", (data) => {
-    gameView.addLogEntry(`🚶 Traveling to new location... (${data.energyCost} energy)`);
+    gameView.addLogEntry(`🚶 Traveling to new location... (${data.duration} minutes)`);
+    if (gameState && gameState.advanceTime) {
+      gameState.advanceTime(data.duration);
+    }
   });
   travelSystem.on("travelComplete", (data) => {
     player.position = travelSystem.currentPosition;
@@ -13957,8 +13950,10 @@ function setupTravelEvents() {
             requiredSkill: "woodcutting",
             sprite: "🌳",
             depletedSprite: "🪵",
-            gatherTime: 3e3,
-            energyCost: 5
+            gatherDuration: 30,
+            // 30 minutes
+            gatherTimeMs: 2e3
+            // 2 seconds animation
           },
           "rock": {
             type: "rock",
@@ -13969,8 +13964,10 @@ function setupTravelEvents() {
             requiredSkill: "mining",
             sprite: "🪨",
             depletedSprite: "⚫",
-            gatherTime: 4e3,
-            energyCost: 7
+            gatherDuration: 40,
+            // 40 minutes
+            gatherTimeMs: 2500
+            // 2.5 seconds animation
           },
           "berry_bush": {
             type: "berry_bush",
@@ -13980,8 +13977,10 @@ function setupTravelEvents() {
             requiredTool: null,
             sprite: "🫐",
             depletedSprite: "🍂",
-            gatherTime: 2e3,
-            energyCost: 2
+            gatherDuration: 15,
+            // 15 minutes
+            gatherTimeMs: 1500
+            // 1.5 seconds animation
           }
         };
         const config = nodeConfigs[discovery.nodeType];
@@ -14040,23 +14039,36 @@ function startGameLoop() {
 }
 function loadGameWorld(savedState) {
   console.log("💾 Loading saved game...");
-  gameState.loadState(savedState);
-  const seed = savedState.state?.island?.seed || savedState.island?.seed;
-  if (!seed) {
-    throw new Error("No island seed found in save data");
+  try {
+    if (!savedState) {
+      throw new Error("No save data provided");
+    }
+    gameState.loadState(savedState);
+    const seed = savedState.state?.island?.seed || savedState.island?.seed;
+    if (!seed) {
+      throw new Error("No island seed found in save data");
+    }
+    const { mapEngine: map, gameView: view } = initializeGameWorld(seed);
+    const playerPos = savedState.player?.position || savedState.state?.player?.position;
+    if (playerPos) {
+      player.position = playerPos;
+      travelSystem.setPosition(playerPos.q, playerPos.r);
+      view.renderPlayerMarker();
+    }
+    view.show();
+    const playerName = savedState.player?.name || savedState.state?.player?.name || "Survivor";
+    const day = savedState.state?.time?.day || savedState.time?.day || 1;
+    console.log(`✅ Game loaded: Day ${day}, ${playerName}`);
+    return { mapEngine: map, gameView: view };
+  } catch (error) {
+    console.error("❌ Failed to load game:", error);
+    alert(`Failed to load game: ${error.message}
+
+The save file may be corrupted or from an incompatible version. Starting a new game instead.`);
+    const { mapEngine: map, gameView: view } = initializeGameWorld();
+    view.show();
+    return { mapEngine: map, gameView: view };
   }
-  const { mapEngine: map, gameView: view } = initializeGameWorld(seed);
-  const playerPos = savedState.player?.position || savedState.state?.player?.position;
-  if (playerPos) {
-    player.position = playerPos;
-    travelSystem.setPosition(playerPos.q, playerPos.r);
-    view.renderPlayerMarker();
-  }
-  view.show();
-  const playerName = savedState.player?.name || savedState.state?.player?.name || "Survivor";
-  const day = savedState.state?.time?.day || savedState.time?.day || 1;
-  console.log(`✅ Game loaded: Day ${day}, ${playerName}`);
-  return { mapEngine: map, gameView: view };
 }
 function initGame() {
   console.log("🏝️ Hedonism Island - Initializing...");
@@ -16662,6 +16674,18 @@ aside::-webkit-scrollbar-thumb:hover {
   align-items: center;
   gap: 6px;
   transition: all 0.2s ease;
+}
+
+.hud-btn.primary {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.3) 0%, rgba(34, 197, 94, 0.2) 100%);
+  border-color: rgba(74, 222, 128, 0.6);
+  font-weight: 700;
+}
+
+.hud-btn.primary:hover {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.5) 0%, rgba(34, 197, 94, 0.3) 100%);
+  border-color: #4ade80;
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.5);
 }
 
 .hud-btn:hover {
@@ -21144,6 +21168,152 @@ aside::-webkit-scrollbar-thumb:hover {
   .poi-stats span {
     font-size: 0.75rem;
   }
+}
+/**
+ * Time Control UI Styles
+ * Modern, clean interface for time display and speed controls
+ */
+
+.time-control-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: linear-gradient(135deg, rgba(20, 20, 30, 0.95), rgba(30, 30, 45, 0.95));
+  border: 2px solid rgba(100, 150, 255, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  z-index: 900;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Time Display Section */
+.time-display-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 15px;
+  border-right: 2px solid rgba(100, 150, 255, 0.2);
+}
+
+.time-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
+}
+
+.time-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.time-string {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.time-of-day {
+  font-size: 11px;
+  color: #a0a0c0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Speed Controls */
+.speed-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.speed-btn {
+  background: rgba(40, 40, 60, 0.8);
+  border: 2px solid rgba(100, 150, 255, 0.3);
+  border-radius: 6px;
+  color: #b0b0d0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
+.speed-btn:hover {
+  background: rgba(60, 60, 90, 0.9);
+  border-color: rgba(120, 170, 255, 0.5);
+  color: #d0d0f0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(100, 150, 255, 0.3);
+}
+
+.speed-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(100, 150, 255, 0.2);
+}
+
+.speed-btn.active {
+  background: linear-gradient(135deg, rgba(80, 130, 255, 0.8), rgba(60, 100, 200, 0.8));
+  border-color: rgba(150, 200, 255, 0.6);
+  color: #ffffff;
+  box-shadow: 0 2px 12px rgba(100, 150, 255, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+
+.speed-btn.pause-btn {
+  font-size: 16px;
+  padding: 6px 10px;
+}
+
+.speed-btn.pause-btn.active {
+  background: linear-gradient(135deg, rgba(100, 200, 100, 0.8), rgba(60, 160, 80, 0.8));
+  border-color: rgba(150, 255, 150, 0.6);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .time-control-container {
+    top: 10px;
+    right: 10px;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .time-string {
+    font-size: 12px;
+  }
+
+  .time-of-day {
+    font-size: 10px;
+  }
+
+  .speed-btn {
+    font-size: 11px;
+    padding: 5px 10px;
+    min-width: 35px;
+  }
+}
+
+/* Animation for time changes */
+@keyframes timeUpdate {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.time-string.updating {
+  animation: timeUpdate 0.3s ease;
 }</style>
 </head>
 <body>
@@ -21163,11 +21333,12 @@ aside::-webkit-scrollbar-thumb:hover {
           <button class="menu-btn" id="btn-continue">Continue</button>
           <button class="menu-btn" id="btn-new-game">New Game</button>
           <button class="menu-btn" id="btn-load">Load Game</button>
+          <button class="menu-btn secondary" id="btn-clear-saves">🗑️ Clear Old Saves</button>
           <button class="menu-btn" id="btn-settings">Settings</button>
           <button class="menu-btn" id="btn-credits">Credits</button>
         </div>
         
-        <p class="version-info">v1.0.0 - Alpha Build</p>
+        <p class="version-info">v3.0.0 - Turn-Based Update</p>
       </div>
     </div>
     

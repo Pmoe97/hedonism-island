@@ -21,6 +21,8 @@ export class TileInteractionUI {
    * Show interaction modal for a tile
    */
   show(position, territory) {
+    console.log('🎯 TileInteractionUI.show() called', { position, territory });
+    
     this.currentPosition = position;
     this.currentTile = territory;
     
@@ -33,20 +35,25 @@ export class TileInteractionUI {
     const hasEvent = territory?.hasEvent;
     const isPlayerTerritory = territory?.owner === 'player';
     
+    console.log('📍 POIs found:', { nodes: nodes.length, hasNPC, hasEvent, isPlayerTerritory });
+    
     // Create modal
     this.modal = document.createElement('div');
     this.modal.className = 'modal-overlay tile-interaction-modal';
     this.modal.id = 'tile-interaction-modal';
+    this.modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10000;';
+    
+    console.log('🎨 Modal element created:', this.modal);
     
     // Build content
     const terrainName = this.getTerrainDisplayName(territory?.terrain || 'unknown');
     const locationInfo = this.getLocationInfo(territory);
     
     this.modal.innerHTML = `
-      <div class="modal-content tile-interaction-content">
-        <div class="modal-header">
-          <h2>📍 ${terrainName}</h2>
-          <button class="close-btn" id="close-tile-interaction">✕</button>
+      <div class="modal-content tile-interaction-content" style="background: white; border-radius: 16px; padding: 20px; max-width: 600px; max-height: 85vh; overflow-y: auto;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; border-radius: 12px 12px 0 0; margin: -20px -20px 20px -20px;">
+          <h2 style="margin: 0; font-size: 1.5rem; color: white;">📍 ${terrainName}</h2>
+          <button class="close-btn" id="close-tile-interaction" style="background: none; border: none; font-size: 2rem; color: white; cursor: pointer; padding: 0; width: 40px; height: 40px;">✕</button>
         </div>
         
         <div class="modal-body">
@@ -62,13 +69,15 @@ export class TileInteractionUI {
           ${this.buildQuickActions(territory)}
         </div>
         
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="tile-interaction-close">Close</button>
+        <div class="modal-footer" style="margin-top: 20px; text-align: right;">
+          <button class="btn btn-secondary" id="tile-interaction-close" style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
         </div>
       </div>
     `;
     
     document.body.appendChild(this.modal);
+    console.log('✅ Modal appended to body. Body children:', document.body.children.length);
+    console.log('📍 Modal in DOM:', document.getElementById('tile-interaction-modal'));
     this.setupEventListeners();
   }
 

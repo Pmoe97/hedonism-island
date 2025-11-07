@@ -7,8 +7,9 @@ import { recipeDB } from '../modules/recipe.js';
 import { itemDB } from '../data/itemDatabase.js';
 
 export class CraftingUI {
-  constructor(player) {
+  constructor(player, gameState) {
     this.player = player;
+    this.gameState = gameState;
     this.isVisible = false;
     this.selectedRecipe = null;
     this.currentCategory = 'all';
@@ -306,7 +307,7 @@ export class CraftingUI {
 
       <div class="details-footer">
         <div class="craft-time">
-          ⏱️ ${(recipe.craftTime / 1000).toFixed(1)}s
+          ⏱️ ${recipe.getCraftDuration ? recipe.getCraftDuration(this.player) + ' min' : Math.floor(recipe.craftDuration) + ' min'}
         </div>
         <div class="craft-xp">
           ⭐ +${recipe.baseXP} XP
@@ -458,25 +459,34 @@ export class CraftingUI {
     const current = this.craftingQueue[0];
     const recipe = current.recipe;
 
+    // Get craft duration in game minutes
+    const craftDuration = recipe.getCraftDuration ? recipe.getCraftDuration(this.player) : recipe.craftDuration;
+    const craftTimeMs = recipe.craftTimeMs || 3000; // Real-time animation duration
+
     // Show progress
     const startTime = Date.now();
     const updateInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      current.progress = Math.min(100, (elapsed / recipe.craftTime) * 100);
+      current.progress = Math.min(100, (elapsed / craftTimeMs) * 100);
       
       if (this.isVisible) {
         this.render();
       }
     }, 100);
 
-    // Wait for craft time
-    await new Promise(resolve => setTimeout(resolve, recipe.craftTime));
+    // Wait for craft animation
+    await new Promise(resolve => setTimeout(resolve, craftTimeMs));
     clearInterval(updateInterval);
 
     // Complete crafting
     const result = recipe.craft(this.player);
     
     if (result.success) {
+      // Advance game time by craft duration
+      if (this.gameState && this.gameState.advanceTime) {
+        this.gameState.advanceTime(craftDuration);
+      }
+      
       const itemNames = result.items.map(i => i.item.name).join(', ');
       const qualityText = result.quality !== 'normal' ? ` (${result.quality})` : '';
       this.showNotification(`✓ Crafted ${itemNames}${qualityText}`, 'success');

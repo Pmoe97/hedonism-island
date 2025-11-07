@@ -74,23 +74,14 @@ export class PlayerHUD {
     header.appendChild(info);
     compact.appendChild(header);
     
-    // Core stat bars - removed 'energy' from compact view, it's shown in header now
-    const stats = ['health', 'hunger', 'thirst'];
+    // Core stat bars
+    const stats = ['health', 'hunger', 'thirst', 'sanity'];
     stats.forEach(stat => {
       const bar = this.createStatBar(stat, true);
       compact.appendChild(bar);
     });
     
-    // Energy display (special - shows current/max)
-    const energyDisplay = document.createElement('div');
-    energyDisplay.className = 'energy-display';
-    energyDisplay.innerHTML = `
-      <span class="energy-icon">⚡</span>
-      <span class="energy-value">${this.player.energy}/${this.player.maxEnergy}</span>
-    `;
-    compact.appendChild(energyDisplay);
-    
-    // End Turn button
+    // End Turn button (will be repurposed to time controls later)
     const endTurnBtn = document.createElement('button');
     endTurnBtn.className = 'end-turn-button';
     endTurnBtn.textContent = 'End Turn';
@@ -120,7 +111,7 @@ export class PlayerHUD {
     statsTitle.textContent = 'STATS';
     statsSection.appendChild(statsTitle);
     
-    ['health', 'hunger', 'thirst', 'energy', 'sanity'].forEach(stat => {
+    ['health', 'hunger', 'thirst', 'sanity'].forEach(stat => {
       const row = this.createStatRow(stat);
       statsSection.appendChild(row);
     });
@@ -258,8 +249,8 @@ export class PlayerHUD {
       return '#2ecc71';
     }
     
-    // Hunger/Thirst/Energy - low is bad
-    if (stat === 'hunger' || stat === 'thirst' || stat === 'energy') {
+    // Hunger/Thirst - low is bad
+    if (stat === 'hunger' || stat === 'thirst') {
       if (value <= 20) return '#e74c3c';
       if (value <= 40) return '#e67e22';
       if (value <= 60) return '#f39c12';
@@ -300,24 +291,8 @@ export class PlayerHUD {
       dayDisplay.textContent = `Day ${this.player.daysAlive}`;
     }
     
-    // Update energy display
-    const energyDisplay = this.container.querySelector('.energy-display .energy-value');
-    if (energyDisplay) {
-      energyDisplay.textContent = `${this.player.energy}/${this.player.maxEnergy}`;
-      
-      // Color-code based on energy level
-      const percentage = (this.player.energy / this.player.maxEnergy) * 100;
-      if (percentage <= 20) {
-        energyDisplay.style.color = '#e74c3c';
-      } else if (percentage <= 40) {
-        energyDisplay.style.color = '#e67e22';
-      } else {
-        energyDisplay.style.color = '#2ecc71';
-      }
-    }
-    
     // Update compact bars
-    ['health', 'hunger', 'thirst'].forEach(stat => {
+    ['health', 'hunger', 'thirst', 'sanity'].forEach(stat => {
       const bar = this.container.querySelector(`.hud-compact .stat-bar[data-stat="${stat}"]`);
       if (bar) {
         const fill = bar.querySelector('.stat-bar-fill');

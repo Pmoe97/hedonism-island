@@ -46,8 +46,8 @@ export class ResourceNode {
     this.size = config.size || 'medium'; // 'small', 'medium', 'large'
     
     // Gathering properties
-    this.gatherTime = config.gatherTime || 3000; // 3 seconds default
-    this.energyCost = config.energyCost || 5;
+    this.baseGatherDuration = config.gatherDuration || 30; // 30 minutes base (in-game time)
+    this.gatherTimeMs = config.gatherTimeMs || 2000; // 2 seconds real-time animation
     
     // Special properties
     this.isRespawnable = config.isRespawnable !== false; // Most nodes respawn
@@ -71,11 +71,6 @@ export class ResourceNode {
     // Player must be alive and conscious
     if (!player.isAlive || !player.isConscious) {
       return { success: false, reason: 'You are not in condition to gather' };
-    }
-
-    // Check energy
-    if (player.stats.energy < this.energyCost) {
-      return { success: false, reason: 'Not enough energy' };
     }
 
     // Check tool requirement
@@ -146,6 +141,45 @@ export class ResourceNode {
   }
 
   /**
+   * Get gather duration in game minutes
+   * Duration varies by node type, player skill, and tool quality
+   * Range: 15-45 minutes
+   */
+  getGatherDuration(player) {
+    let duration = this.baseGatherDuration;
+
+    // Skill reduces gather time
+    if (this.requiredSkill) {
+      const skillLevel = player.getEffectiveSkill(this.requiredSkill);
+      const skillReduction = Math.floor(skillLevel / 10) * 2; // -2 minutes per 10 skill
+      duration -= skillReduction;
+    }
+
+    // Tool quality reduces gather time
+    const tool = this.getEquippedTool(player);
+    if (tool && tool.rarity !== 'common') {
+      const rarityReduction = {
+        uncommon: 2,   // -2 minutes
+        rare: 5,       // -5 minutes
+        epic: 8,       // -8 minutes
+        legendary: 12  // -12 minutes
+      };
+      duration -= (rarityReduction[tool.rarity] || 0);
+    }
+
+    // Node quality affects gather time
+    const qualityModifiers = {
+      poor: 1.2,      // +20% time (harder to extract)
+      normal: 1.0,    // Normal time
+      rich: 0.9,      // -10% time (easier to extract)
+      abundant: 0.8   // -20% time (very easy)
+    };
+    duration *= qualityModifiers[this.quality];
+
+    return Math.max(15, Math.ceil(duration)); // Minimum 15 minutes
+  }
+
+  /**
    * Attempt to gather resources
    */
   gather(player) {
@@ -160,9 +194,6 @@ export class ResourceNode {
     // Calculate yield based on skill and tool quality
     const baseYield = this.calculateYield(player);
     const items = this.generateItems(baseYield);
-
-    // Consume energy
-    player.stats.energy -= this.energyCost;
 
     // Damage tool if applicable
     const tool = this.getEquippedTool(player);

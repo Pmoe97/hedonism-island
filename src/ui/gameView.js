@@ -101,16 +101,19 @@ export class GameView {
           </div>
           
           <div class="hud-right">
-            <button class="hud-btn" id="inventory-btn" title="Inventory (I)">
+            <button class="hud-btn" id="inventory-btn" title="Inventory">
               🎒 <span>Inventory</span>
             </button>
-            <button class="hud-btn" id="crafting-btn" title="Crafting (C)">
-              � <span>Craft</span>
+            <button class="hud-btn" id="crafting-btn" title="Crafting">
+              🔨 <span>Craft</span>
             </button>
-            <button class="hud-btn" id="skills-btn" title="Skills (K)">
+            <button class="hud-btn" id="skills-btn" title="Skills">
               ⭐ <span>Skills</span>
             </button>
-            <button class="hud-btn" id="game-menu-btn" title="Menu (ESC)">
+            <button class="hud-btn primary" id="end-turn-btn" title="End Turn">
+              ⏭️ <span>End Turn</span>
+            </button>
+            <button class="hud-btn" id="game-menu-btn" title="Menu">
               ⚙️ <span>Menu</span>
             </button>
           </div>
@@ -387,6 +390,10 @@ export class GameView {
       this.showSkillsMenu();
     });
     
+    document.getElementById('end-turn-btn')?.addEventListener('click', () => {
+      window.game.endTurnMenu?.show();
+    });
+    
     document.getElementById('game-menu-btn')?.addEventListener('click', () => {
       this.showGameMenu();
     });
@@ -639,7 +646,10 @@ export class GameView {
     const hex = this.renderer.screenToHex(event.clientX, event.clientY);
     const tile = this.mapData.tiles.get(`${hex.q},${hex.r}`);
     
-    if (!tile) return;
+    if (!tile) {
+      console.log('❌ No tile found at', hex);
+      return;
+    }
 
     // Calculate distance using proper hex distance formula
     const dq = Math.abs(hex.q - this.player.position.q);
@@ -647,8 +657,17 @@ export class GameView {
     const ds = Math.abs((-hex.q - hex.r) - (-this.player.position.q - this.player.position.r));
     const distance = Math.max(dq, dr, ds);
 
+    console.log('🖱️ Tile clicked:', {
+      position: hex,
+      playerPosition: this.player.position,
+      distance,
+      terrain: tile.terrain,
+      isPassable: tile.isPassable
+    });
+
     // Check if clicking current tile - show tile interaction modal
     if (distance === 0) {
+      console.log('📍 Clicking current tile - showing tile actions');
       this.showTileActions(tile, hex);
       return;
     }
@@ -658,11 +677,15 @@ export class GameView {
     const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r) || [];
     const hasPOIs = nodes.length > 0 || territory?.hasNPC || territory?.hasEvent;
     
+    console.log('🔍 Checking for POIs:', { nodes: nodes.length, hasNPC: territory?.hasNPC, hasEvent: territory?.hasEvent, hasPOIs });
+    
     if (distance === 1 && hasPOIs) {
       // Adjacent tile with POIs - show interaction modal
+      console.log('📍 Adjacent tile with POIs - showing interaction modal');
       if (window.game?.tileInteractionUI) {
         window.game.tileInteractionUI.show(hex, territory);
       } else {
+        console.error('❌ tileInteractionUI not found on window.game!');
         this.addLogEntry('🔍 Something interesting here. Move closer to interact.');
       }
       return;
@@ -670,17 +693,20 @@ export class GameView {
 
     // Otherwise, try to travel
     if (!tile.isPassable) {
+      console.log('❌ Tile not passable');
       this.addLogEntry("❌ You can't travel there.");
       return;
     }
 
     // Must be adjacent to travel
     if (distance > 1) {
+      console.log('❌ Too far to travel');
       this.addLogEntry("❌ Too far to travel in one move.");
       return;
     }
 
     // Use TravelSystem to move
+    console.log('🚶 Attempting travel to', hex);
     const result = this.travelSystem.startTravel(hex.q, hex.r);
     if (!result.success) {
       this.addLogEntry(`❌ ${result.reason}`);

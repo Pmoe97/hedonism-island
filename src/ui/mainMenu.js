@@ -35,6 +35,7 @@ export class MainMenu {
     const continueBtn = document.getElementById('btn-continue');
     const newGameBtn = document.getElementById('btn-new-game');
     const loadBtn = document.getElementById('btn-load');
+    const clearSavesBtn = document.getElementById('btn-clear-saves');
     const settingsBtn = document.getElementById('btn-settings');
     const creditsBtn = document.getElementById('btn-credits');
     
@@ -42,6 +43,7 @@ export class MainMenu {
       continueBtn: !!continueBtn,
       newGameBtn: !!newGameBtn,
       loadBtn: !!loadBtn,
+      clearSavesBtn: !!clearSavesBtn,
       settingsBtn: !!settingsBtn,
       creditsBtn: !!creditsBtn
     });
@@ -59,6 +61,10 @@ export class MainMenu {
 
     if (loadBtn) {
       loadBtn.onclick = () => this.showLoadMenu();
+    }
+    
+    if (clearSavesBtn) {
+      clearSavesBtn.onclick = () => this.clearOldSaves();
     }
 
     if (settingsBtn) {
@@ -86,6 +92,35 @@ export class MainMenu {
   }
 
   /**
+   * Clear old incompatible saves
+   */
+  clearOldSaves() {
+    const confirmMessage = `⚠️ Clear Old Saves?\n\nThis will delete ALL saved games and cannot be undone.\n\nRecommended if you're experiencing issues with old saves from previous versions.\n\nContinue?`;
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    
+    // Remove all save-related data from localStorage
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('hedonism')) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    
+    console.log(`🗑️ Cleared ${keysToRemove.length} save entries`);
+    
+    // Refresh the continue button state
+    this.checkContinueButton();
+    
+    alert(`✅ Cleared ${keysToRemove.length} save file(s).\n\nYou can now start a fresh game with "New Game".`);
+  }
+
+  /**
    * Continue from last save
    */
   continueGame() {
@@ -93,6 +128,26 @@ export class MainMenu {
     if (savedData) {
       try {
         const saveState = JSON.parse(savedData);
+        
+        // Check version compatibility
+        const saveVersion = saveState.meta?.version || '1.0.0';
+        const currentVersion = window.GAME_VERSION || '3.0.0';
+        
+        if (saveVersion !== currentVersion && !window.COMPATIBLE_VERSIONS?.includes(saveVersion)) {
+          alert(
+            `🚫 INCOMPATIBLE SAVE FILE\n\n` +
+            `Your save is from version ${saveVersion}, but you're running version ${currentVersion}.\n\n` +
+            `❌ This save CANNOT be loaded due to major system changes:\n` +
+            `• Complete rewrite to turn-based energy system\n` +
+            `• New tile interaction system (resources, NPCs, events)\n` +
+            `• Completely new fog of war mechanics\n` +
+            `• Updated save format and game state\n\n` +
+            `🎮 Please use "Clear Old Saves" then start a NEW GAME.\n\n` +
+            `The new version is completely different and much better!`
+          );
+          
+          return; // Block loading incompatible saves
+        }
         
         // Emit load event with save data
         this.gameState.emit('loadGame', saveState);

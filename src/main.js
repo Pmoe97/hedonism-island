@@ -13,6 +13,7 @@ import './styles/mapTravelUI.css';
 import './styles/playerHUD.css';
 import './styles/endTurnMenu.css';
 import './styles/tileInteractionUI.css';
+import './styles/timeControlUI.css';
 import { PerchanceAI } from './modules/perchanceAI.js';
 import { SceneEngine } from './modules/sceneEngine.js';
 import { GameState } from './modules/gameState.js';
@@ -40,7 +41,12 @@ import { MapTravelUI } from './ui/mapTravelUI.js';
 import { PlayerHUD } from './ui/playerHUD.js';
 import { EndTurnMenu } from './ui/endTurnMenu.js';
 import { TileInteractionUI } from './ui/tileInteractionUI.js';
+import { TimeControlUI } from './ui/timeControlUI.js';
 import scenes from './data/scenes.json';
+
+// Game Version - increment when making breaking changes
+const GAME_VERSION = '4.0.0'; // Real-time system with time controls, removed energy
+const COMPATIBLE_VERSIONS = ['4.0.0']; // List of save-compatible versions
 
 // Initialize core systems
 const settingsManager = new SettingsManager();
@@ -72,6 +78,7 @@ let mapTravelUI = null;
 let playerHUD = null;
 let endTurnMenu = null;
 let tileInteractionUI = null;
+let timeControlUI = null;
 
 // Global options menu function (accessible from gear icon)
 function showGlobalOptionsMenu() {
@@ -80,6 +87,9 @@ function showGlobalOptionsMenu() {
 }
 
 // Make accessible globally for debugging
+window.GAME_VERSION = GAME_VERSION;
+window.COMPATIBLE_VERSIONS = COMPATIBLE_VERSIONS;
+
 window.game = {
   state: gameState,
   settings: settingsManager,
@@ -217,15 +227,16 @@ function initializeGameWorld(existingSeed = null) {
   // Create game view
   gameView = new GameView(gameState, mapData, player, inventory, resourceNodeManager, territoryManager, travelSystem);
   
-  // Initialize End Turn Menu
+  // Initialize End Turn Menu (will be deprecated)
   endTurnMenu = new EndTurnMenu(gameState);
   
   // Initialize UI systems
   inventoryUI = new InventoryUI(inventory, player);
   gatheringUI = new GatheringUI(player, inventory, resourceNodeManager);
-  craftingUI = new CraftingUI(player);
+  craftingUI = new CraftingUI(player, gameState);
   mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
-  playerHUD = new PlayerHUD(player, () => endTurnMenu.show());
+  timeControlUI = new TimeControlUI(gameState);
+  // playerHUD = new PlayerHUD(player, () => endTurnMenu.show()); // REMOVED - duplicate of top bar
   tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager);
   
   console.log(`✨ All UI systems initialized`);
@@ -251,9 +262,10 @@ function initializeGameWorld(existingSeed = null) {
   window.game.gatheringUI = gatheringUI;
   window.game.craftingUI = craftingUI;
   window.game.mapTravelUI = mapTravelUI;
+  window.game.timeControlUI = timeControlUI;
+  window.game.tileInteractionUI = tileInteractionUI;
   window.game.playerHUD = playerHUD;
   window.game.endTurnMenu = endTurnMenu;
-  window.game.tileInteractionUI = tileInteractionUI;
   
   console.log(`🎮 Game world fully initialized!`);
   
@@ -271,7 +283,12 @@ function spawnInitialResources(startPos, mapData) {
 // Setup travel event listeners
 function setupTravelEvents() {
   travelSystem.on('travelStart', (data) => {
-    gameView.addLogEntry(`🚶 Traveling to new location... (${data.energyCost} energy)`);
+    gameView.addLogEntry(`🚶 Traveling to new location... (${data.duration} minutes)`);
+    
+    // Advance game time by travel duration
+    if (gameState && gameState.advanceTime) {
+      gameState.advanceTime(data.duration);
+    }
   });
   
   travelSystem.on('travelComplete', (data) => {
@@ -295,8 +312,8 @@ function setupTravelEvents() {
             requiredSkill: 'woodcutting',
             sprite: '🌳',
             depletedSprite: '🪵',
-            gatherTime: 3000,
-            energyCost: 5
+            gatherDuration: 30, // 30 minutes
+            gatherTimeMs: 2000  // 2 seconds animation
           },
           'rock': {
             type: 'rock',
@@ -307,8 +324,8 @@ function setupTravelEvents() {
             requiredSkill: 'mining',
             sprite: '🪨',
             depletedSprite: '⚫',
-            gatherTime: 4000,
-            energyCost: 7
+            gatherDuration: 40, // 40 minutes
+            gatherTimeMs: 2500  // 2.5 seconds animation
           },
           'berry_bush': {
             type: 'berry_bush',
@@ -318,8 +335,8 @@ function setupTravelEvents() {
             requiredTool: null,
             sprite: '🫐',
             depletedSprite: '🍂',
-            gatherTime: 2000,
-            energyCost: 2
+            gatherDuration: 15, // 15 minutes
+            gatherTimeMs: 1500  // 1.5 seconds animation
           }
         };
         
@@ -409,35 +426,50 @@ function stopGameLoop() {
 function loadGameWorld(savedState) {
   console.log('💾 Loading saved game...');
   
-  // Restore game state
-  gameState.loadState(savedState);
-  
-  // Get seed from the correct location in save structure
-  const seed = savedState.state?.island?.seed || savedState.island?.seed;
-  
-  if (!seed) {
-    throw new Error('No island seed found in save data');
+  try {
+    // Validate save data
+    if (!savedState) {
+      throw new Error('No save data provided');
+    }
+    
+    // Restore game state
+    gameState.loadState(savedState);
+    
+    // Get seed from the correct location in save structure
+    const seed = savedState.state?.island?.seed || savedState.island?.seed;
+    
+    if (!seed) {
+      throw new Error('No island seed found in save data');
+    }
+    
+    // Regenerate map from saved seed
+    const { mapEngine: map, gameView: view } = initializeGameWorld(seed);
+    
+    // Restore player position if saved
+    const playerPos = savedState.player?.position || savedState.state?.player?.position;
+    if (playerPos) {
+      player.position = playerPos;
+      travelSystem.setPosition(playerPos.q, playerPos.r);
+      view.renderPlayerMarker();
+    }
+    
+    // Show game view
+    view.show();
+    
+    const playerName = savedState.player?.name || savedState.state?.player?.name || 'Survivor';
+    const day = savedState.state?.time?.day || savedState.time?.day || 1;
+    console.log(`✅ Game loaded: Day ${day}, ${playerName}`);
+    
+    return { mapEngine: map, gameView: view };
+  } catch (error) {
+    console.error('❌ Failed to load game:', error);
+    alert(`Failed to load game: ${error.message}\n\nThe save file may be corrupted or from an incompatible version. Starting a new game instead.`);
+    
+    // Fall back to new game
+    const { mapEngine: map, gameView: view } = initializeGameWorld();
+    view.show();
+    return { mapEngine: map, gameView: view };
   }
-  
-  // Regenerate map from saved seed
-  const { mapEngine: map, gameView: view } = initializeGameWorld(seed);
-  
-  // Restore player position if saved
-  const playerPos = savedState.player?.position || savedState.state?.player?.position;
-  if (playerPos) {
-    player.position = playerPos;
-    travelSystem.setPosition(playerPos.q, playerPos.r);
-    view.renderPlayerMarker();
-  }
-  
-  // Show game view
-  view.show();
-  
-  const playerName = savedState.player?.name || savedState.state?.player?.name || 'Survivor';
-  const day = savedState.state?.time?.day || savedState.time?.day || 1;
-  console.log(`✅ Game loaded: Day ${day}, ${playerName}`);
-  
-  return { mapEngine: map, gameView: view };
 }
 
 // Start game

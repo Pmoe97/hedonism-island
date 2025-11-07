@@ -436,29 +436,42 @@ export class Inventory {
    * Load from saved data
    */
   static fromJSON(data, itemDatabase) {
-    const inventory = new Inventory(data.capacity, data.maxWeight);
+    // Handle missing or invalid data
+    if (!data) {
+      console.warn('⚠️ No inventory data provided, creating default inventory');
+      return new Inventory(20, 50);
+    }
     
-    // Load slots
-    data.slots.forEach((slotData, index) => {
-      if (slotData) {
-        const item = itemDatabase.get(slotData.itemId);
-        if (item) {
-          item.durability = slotData.durability ?? item.durability;
-          inventory.slots[index].add(item, slotData.quantity);
-        }
-      }
-    });
+    // Provide defaults for missing properties
+    const capacity = data.capacity || 20;
+    const maxWeight = data.maxWeight || 50;
+    const inventory = new Inventory(capacity, maxWeight);
     
-    // Load equipment
-    Object.entries(data.equipment).forEach(([slot, itemData]) => {
-      if (itemData) {
-        const item = itemDatabase.get(itemData.id);
-        if (item) {
-          item.durability = itemData.durability ?? item.durability;
-          inventory.equipment[slot] = item;
+    // Load slots (with safety check)
+    if (data.slots && Array.isArray(data.slots)) {
+      data.slots.forEach((slotData, index) => {
+        if (slotData && index < inventory.slots.length) {
+          const item = itemDatabase.get(slotData.itemId);
+          if (item) {
+            item.durability = slotData.durability ?? item.durability;
+            inventory.slots[index].add(item, slotData.quantity);
+          }
         }
-      }
-    });
+      });
+    }
+    
+    // Load equipment (with safety check)
+    if (data.equipment && typeof data.equipment === 'object') {
+      Object.entries(data.equipment).forEach(([slot, itemData]) => {
+        if (itemData && inventory.equipment.hasOwnProperty(slot)) {
+          const item = itemDatabase.get(itemData.id);
+          if (item) {
+            item.durability = itemData.durability ?? item.durability;
+            inventory.equipment[slot] = item;
+          }
+        }
+      });
+    }
     
     return inventory;
   }

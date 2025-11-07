@@ -21,8 +21,8 @@ export class Recipe {
     this.output = data.output || []; // [{ itemId: 'stone_axe', quantity: 1 }]
     
     // Crafting properties
-    this.craftTime = data.craftTime || 5000; // milliseconds
-    this.energyCost = data.energyCost || 10;
+    this.craftDuration = data.craftDuration || 60; // game minutes (30min to 6hrs based on complexity)
+    this.craftTimeMs = data.craftTimeMs || 3000; // milliseconds for real-time animation
     this.difficulty = data.difficulty || 'easy'; // 'easy', 'medium', 'hard', 'expert'
     
     // Unlocking
@@ -57,11 +57,6 @@ export class Recipe {
           };
         }
       }
-    }
-
-    // Check energy
-    if (player.stats.energy < this.energyCost) {
-      return { success: false, reason: 'Not enough energy' };
     }
 
     // Check skill requirement
@@ -128,6 +123,47 @@ export class Recipe {
   }
 
   /**
+   * Get crafting duration in game minutes
+   * Duration varies by difficulty, player skill, and tool quality
+   * Range: 30 minutes to 6 hours
+   */
+  getCraftDuration(player) {
+    let duration = this.craftDuration;
+
+    // Difficulty base durations
+    const difficultyBase = {
+      easy: 30,      // 30 minutes
+      medium: 60,    // 1 hour
+      hard: 120,     // 2 hours
+      expert: 240    // 4 hours
+    };
+    duration = difficultyBase[this.difficulty] || 60;
+
+    // Skill reduces craft time
+    if (this.requiredSkill) {
+      const skillLevel = player.getEffectiveSkill(this.requiredSkill);
+      const skillReduction = Math.floor(skillLevel / 10) * 5; // -5 minutes per 10 skill
+      duration -= skillReduction;
+    }
+
+    // Tool quality reduces craft time
+    if (this.requiredTool) {
+      const tool = this.getEquippedTool(player);
+      if (tool && tool.rarity !== 'common') {
+        const rarityReduction = {
+          uncommon: 5,   // -5 minutes
+          rare: 10,      // -10 minutes
+          epic: 20,      // -20 minutes
+          legendary: 30  // -30 minutes
+        };
+        duration -= (rarityReduction[tool.rarity] || 0);
+      }
+    }
+
+    return Math.max(30, Math.ceil(duration)); // Minimum 30 minutes
+  }
+
+  /**
    * Get the equipped tool being used
    */
   getEquippedTool(player) {
@@ -165,9 +201,6 @@ export class Recipe {
     for (const ingredient of this.ingredients) {
       player.inventory.removeItem(ingredient.itemId, ingredient.quantity);
     }
-
-    // Consume energy
-    player.stats.energy -= this.energyCost;
 
     // Damage tool if required
     if (this.requiredTool) {

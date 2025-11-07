@@ -211,8 +211,7 @@ export class MapTravelUI {
     if (travelInfo) {
       if (travelInfo.canTravel) {
         content += `<div class="tooltip-travel">
-          ⚡ ${travelInfo.energyCost} energy
-          ⏱️ ${(travelInfo.travelTime / 1000).toFixed(1)}s
+          ⏱️ ${travelInfo.duration} minutes travel
         </div>`;
       } else {
         content += `<div class="tooltip-error">${travelInfo.reason}</div>`;
@@ -399,34 +398,38 @@ export class MapTravelUI {
       // FOG RENDERING LOGIC:
       // 1. Never discovered → Total fog (completely dark)
       if (!territory.discovered) {
-        ctx.fillStyle = '#0a0f1a';
+        // Dark gray base instead of blue
+        ctx.fillStyle = '#1a1a1a';
         ctx.fill();
         
+        // Smoke/cloud colored gradient (grays instead of blues)
         const gradient = ctx.createRadialGradient(
           size * 0.2, -size * 0.3, 0,
           0, 0, size * 1.2
         );
-        gradient.addColorStop(0, 'rgba(30, 41, 59, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(15, 23, 42, 0.9)');
-        gradient.addColorStop(1, 'rgba(5, 8, 15, 1)');
+        gradient.addColorStop(0, 'rgba(80, 80, 80, 0.9)');
+        gradient.addColorStop(0.5, 'rgba(60, 60, 60, 0.95)');
+        gradient.addColorStop(1, 'rgba(30, 30, 30, 1)');
         ctx.fillStyle = gradient;
         ctx.fill();
       }
       // 2. Discovered but never visited → Partial fog/veil (can see terrain but dimmed)
       else if (territory.discovered && !territory.visited) {
+        // Light smoke veil
         const veilGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-        veilGradient.addColorStop(0, 'rgba(30, 41, 59, 0.5)');
-        veilGradient.addColorStop(0.6, 'rgba(15, 23, 42, 0.6)');
-        veilGradient.addColorStop(1, 'rgba(10, 15, 26, 0.7)');
+        veilGradient.addColorStop(0, 'rgba(150, 150, 150, 0.5)');
+        veilGradient.addColorStop(0.6, 'rgba(120, 120, 120, 0.6)');
+        veilGradient.addColorStop(1, 'rgba(80, 80, 80, 0.7)');
         ctx.fillStyle = veilGradient;
         ctx.fill();
       }
       // 3. Visited but out of active vision → Light dim overlay
       else if (territory.visited && !hasActiveVision) {
+        // Very light smoke (just a hint of darkness)
         const dimGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-        dimGradient.addColorStop(0, 'rgba(15, 23, 42, 0.3)');
-        dimGradient.addColorStop(0.7, 'rgba(10, 15, 26, 0.4)');
-        dimGradient.addColorStop(1, 'rgba(5, 8, 15, 0.5)');
+        dimGradient.addColorStop(0, 'rgba(100, 100, 100, 0.25)');
+        dimGradient.addColorStop(0.7, 'rgba(70, 70, 70, 0.35)');
+        dimGradient.addColorStop(1, 'rgba(40, 40, 40, 0.45)');
         ctx.fillStyle = dimGradient;
         ctx.fill();
       }
@@ -551,7 +554,7 @@ export class MapTravelUI {
    */
   showTravelNotification(result) {
     this.showNotification(
-      `Traveling... (${result.energyCost} energy, ${(result.travelTime / 1000).toFixed(1)}s)`,
+      `Traveling... (${result.duration} minutes)`,
       'info'
     );
   }

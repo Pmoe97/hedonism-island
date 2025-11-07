@@ -15,9 +15,8 @@ export class TravelSystem {
     this.travelProgress = 0;
     this.travelSpeed = 1.0; // tiles per second
     
-    // Base travel costs
-    this.baseEnergyCost = 5; // Per tile
-    this.baseTravelTime = 1000; // ms per tile
+    // Base travel duration (in game minutes)
+    this.baseTravelDuration = 10; // 10 minutes base travel time
     
     // Event system
     this.eventHandlers = [];
@@ -26,87 +25,63 @@ export class TravelSystem {
   }
 
   /**
-   * Calculate energy cost for traveling to a tile
-   * Now uses fog-of-war system:
-   * - Undiscovered: 15-20 energy (exploring unknown terrain)
-   * - Discovered but not developed: 8-12 energy (rough paths)
-   * - Player-owned/developed: 3-5 energy (roads/trails)
+   * Calculate travel duration for traveling to a tile (in game minutes)
+   * Duration depends on:
+   * - Discovery state (undiscovered takes longer to navigate)
+   * - Terrain type (harder terrain = longer travel)
+   * - Elevation changes (steep = slower)
+   * Range: 5-15 minutes base, with modifiers
    */
-  calculateEnergyCost(fromPos, toPos) {
+  calculateTravelDuration(fromPos, toPos) {
     const fromTerritory = this.territoryManager.getTerritory(fromPos.q, fromPos.r);
     const toTerritory = this.territoryManager.getTerritory(toPos.q, toPos.r);
     
     if (!toTerritory) return Infinity;
 
-    // Base cost depends on discovery state
-    let baseCost;
+    // Base duration depends on discovery state
+    let baseDuration;
     if (!toTerritory.discovered) {
-      baseCost = 17; // Average of 15-20 for undiscovered
+      baseDuration = 15; // Exploring unknown terrain takes longer
     } else if (toTerritory.owner === 'player') {
-      baseCost = 4; // Average of 3-5 for player-owned
+      baseDuration = 5; // Quick travel on owned territory
     } else {
-      baseCost = 10; // Average of 8-12 for discovered
+      baseDuration = 10; // Normal travel on discovered terrain
     }
 
-    // Terrain multipliers (harder terrain = more energy)
+    // Terrain multipliers (harder terrain = longer travel)
     const terrainMultipliers = {
       'deep_water': 999,  // Can't travel through deep water
-      'water': 2.0,       // Very expensive (swimming/wading)
-      'beach': 1.0,       // Easy
-      'lowland': 1.1,     // Slightly harder
-      'plains': 1.0,      // Easy
-      'scrubland': 1.2,   // Brushy terrain
+      'water': 2.0,       // Very slow (swimming/wading)
+      'beach': 0.9,       // Easy
+      'lowland': 1.0,     // Normal
+      'plains': 0.9,      // Easy
+      'scrubland': 1.2,   // Slower through brush
       'forest': 1.3,      // Thick vegetation
-      'jungle': 1.4,      // Dense jungle
+      'jungle': 1.5,      // Dense jungle
       'highland': 1.4,    // Uphill
-      'mountain': 1.5,    // Steep
-      'swamp': 1.6,       // Very difficult
-      'mangrove': 1.3,    // Thick roots
-      'bamboo-forest': 1.2, // Dense but passable
+      'mountain': 1.6,    // Steep
+      'swamp': 1.8,       // Very slow
+      'mangrove': 1.4,    // Thick roots
+      'bamboo-forest': 1.3, // Dense but navigable
       'palm-grove': 1.1   // Relatively open
     };
     
     const terrainMult = terrainMultipliers[toTerritory.terrain] || 1.2;
-    baseCost *= terrainMult;
+    baseDuration *= terrainMult;
 
-    // Elevation change cost (steeper = harder)
+    // Elevation change (steeper = slower)
     if (fromTerritory) {
       const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
-      baseCost *= (1 + elevationChange * 0.15); // 15% per elevation level
+      baseDuration *= (1 + elevationChange * 0.2); // 20% per elevation level
     }
 
-    // Add slight randomness to undiscovered tiles (15-20 range)
+    // Add slight randomness to undiscovered tiles
     if (!toTerritory.discovered) {
-      const variance = 2.5; // +/- 2.5
-      baseCost += (Math.random() * variance * 2) - variance;
+      const variance = 2; // +/- 2 minutes
+      baseDuration += (Math.random() * variance * 2) - variance;
     }
 
-    return Math.max(3, Math.ceil(baseCost)); // Minimum 3 energy
-  }
-
-  /**
-   * Calculate travel time for a tile
-   */
-  calculateTravelTime(fromPos, toPos) {
-    const toTerritory = this.territoryManager.getTerritory(toPos.q, toPos.r);
-    if (!toTerritory) return Infinity;
-
-    let time = this.baseTravelTime;
-
-    // Apply territory speed modifier
-    time /= toTerritory.travelSpeedModifier;
-
-    // Terrain modifiers
-    const terrainSpeed = {
-      'beach': 0.9,
-      'lowland': 1.0,
-      'forest': 1.3,
-      'highland': 1.5,
-      'mountain': 2.0
-    };
-    time *= (terrainSpeed[toTerritory.terrain] || 1.0);
-
-    return Math.ceil(time);
+    return Math.max(5, Math.ceil(baseDuration)); // Minimum 5 minutes
   }
 
   /**
@@ -115,11 +90,13 @@ export class TravelSystem {
   canTravelTo(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) {
+      console.log('❌ No territory found');
       return false;
     }
 
-    // Can't travel through deep water
-    if (territory.terrain === 'deep_water') {
+    // Can't travel through water - check terrain type
+    if (territory.terrain === 'sea' || territory.terrain === 'deep_water') {
+      console.log('❌ Cannot travel to water', territory.terrain);
       return false;
     }
 
@@ -129,21 +106,24 @@ export class TravelSystem {
     const ds = Math.abs((-q - r) - (-this.currentPosition.q - this.currentPosition.r));
     const distance = Math.max(dq, dr, ds); // Proper hex distance
     
+    if (distance === 0) {
+      console.log('❌ Already at this tile');
+      return false; // Already at this tile
+    }
+    
     if (distance > 1) {
+      console.log('❌ Too far to travel', distance);
       return false; // Must be adjacent (hex distance = 1)
     }
 
-    // Check energy cost using player's new hasEnergy method
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (!this.player.hasEnergy(energyCost)) {
-      return false;
-    }
-
+    const duration = this.calculateTravelDuration(this.currentPosition, { q, r });
+    console.log('✅ Can travel to', {q, r}, 'duration:', duration, 'minutes');
     return true;
   }
 
   /**
    * Start traveling to a position
+   * Returns the travel duration so caller can advance game time
    */
   startTravel(q, r) {
     if (!this.canTravelTo(q, r)) {
@@ -153,40 +133,26 @@ export class TravelSystem {
       };
     }
 
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    const travelTime = this.calculateTravelTime(this.currentPosition, { q, r });
+    const travelDuration = this.calculateTravelDuration(this.currentPosition, { q, r });
+    const travelTimeMs = 1000; // Visual animation time in real-time milliseconds
 
     this.targetPosition = { q, r };
     this.isTraveling = true;
     this.travelProgress = 0;
-    this.travelSpeed = 1000 / travelTime; // Progress per second
-
-    // Deduct energy using player's new energy system
-    const success = this.player.spendEnergy(energyCost);
-    if (!success) {
-      // Shouldn't happen (canTravelTo checks this), but safety check
-      this.isTraveling = false;
-      this.targetPosition = null;
-      return {
-        success: false,
-        reason: 'Not enough energy'
-      };
-    }
+    this.travelSpeed = 1000 / travelTimeMs; // Progress per second (for visual animation)
 
     // Emit travel start event
     this.emitEvent('travelStart', {
       from: { ...this.currentPosition },
       to: { q, r },
-      energyCost,
-      travelTime
+      duration: travelDuration
     });
 
-    console.log(`🚶 Started travel to (${q}, ${r}) - Cost: ${energyCost} energy`);
+    console.log(`🚶 Started travel to (${q}, ${r}) - Duration: ${travelDuration} minutes`);
 
     return {
       success: true,
-      energyCost,
-      travelTime
+      duration: travelDuration // Return duration for time advancement
     };
   }
 
@@ -459,13 +425,11 @@ export class TravelSystem {
     if (!territory) return null;
 
     const canTravel = this.canTravelTo(q, r);
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    const travelTime = this.calculateTravelTime(this.currentPosition, { q, r });
+    const duration = this.calculateTravelDuration(this.currentPosition, { q, r });
 
     return {
       canTravel,
-      energyCost,
-      travelTime,
+      duration,
       territory,
       reason: !canTravel ? this.getCannotTravelReason(q, r) : null
     };
@@ -477,10 +441,7 @@ export class TravelSystem {
   getCannotTravelReason(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) return 'Invalid location';
-    if (territory.terrain === 'deep_water') return 'Cannot cross deep water';
-    
-    const energyCost = this.calculateEnergyCost(this.currentPosition, { q, r });
-    if (this.player.energy < energyCost) return `Need ${energyCost} energy`;
+    if (territory.terrain === 'deep_water' || territory.terrain === 'sea') return 'Cannot cross water';
     
     return 'Too far away';
   }
