@@ -147,6 +147,14 @@ export class CharacterCreationUI {
         <h2>Choose Your Gender</h2>
         <p class="step-description">Select the gender identity for your character</p>
         
+        <!-- Quick Start Button -->
+        <div style="text-align: center; margin-bottom: 20px; padding: 15px; background: rgba(255, 215, 0, 0.1); border: 2px dashed #ffd700; border-radius: 8px;">
+          <button id="quick-start-btn" class="btn-primary" style="font-size: 1.2em; padding: 12px 24px; background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); color: #000; font-weight: bold;">
+            ⚡ QUICK START - Skip Character Creation
+          </button>
+          <p style="margin-top: 10px; font-size: 0.9em; color: #aaa;">(Creates default female character for testing)</p>
+        </div>
+        
         <div class="gender-options">
           ${this.renderGenderOption('female', 'Female', '♀', 'Feminine body with vagina')}
           ${this.renderGenderOption('male', 'Male', '♂', 'Masculine body with penis')}
@@ -554,6 +562,7 @@ export class CharacterCreationUI {
     const prevBtn = document.getElementById('prev-step-btn');
     const confirmBtn = document.getElementById('confirm-character-btn');
     const randomizeBtn = document.getElementById('randomize-btn');
+    const quickStartBtn = document.getElementById('quick-start-btn');
     
     if (nextBtn) nextBtn.addEventListener('click', () => this.nextStep());
     if (prevBtn) prevBtn.addEventListener('click', () => this.prevStep());
@@ -563,6 +572,9 @@ export class CharacterCreationUI {
         this.creator.randomizeStep(this.currentStep);
         this.render();
       });
+    }
+    if (quickStartBtn) {
+      quickStartBtn.addEventListener('click', () => this.quickStart());
     }
     
     // Step 1: Gender selection
@@ -785,6 +797,55 @@ export class CharacterCreationUI {
     this.hide();
     
     // Start the game
+    this.gameState.emit('characterCreated', character);
+  }
+
+  /**
+   * Quick Start - Creates a default character and skips all creation steps
+   * Perfect for testing and development
+   */
+  quickStart() {
+    console.log('⚡ Quick Start activated - Creating default character');
+    
+    // Use the first female preset (Beach Babe) as default
+    this.creator.setGender('female');
+    this.creator.applyPreset('female', 0);
+    
+    // Set a default name
+    this.creator.updateAttribute('name', 'Tori');
+    this.creator.updateAttribute('age', 25);
+    
+    // Apply the tourist background
+    this.creator.updateAttribute('background', 'tourist');
+    this.creator.applyBackgroundBonuses();
+    
+    // Set a placeholder portrait (emoji/icon for quick start)
+    // This bypasses the portrait generation requirement for testing
+    this.creator.updateAttribute('portraitUrl', 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect fill="%23f0f0f0" width="200" height="200"/><text x="50%" y="50%" font-size="100" text-anchor="middle" dy=".3em">🏝️</text></svg>');
+    this.creator.updateAttribute('portraitPrompt', 'Quick start character - no AI generation');
+    
+    // Validate and confirm
+    const validation = this.creator.validateCharacter();
+    
+    if (!validation.valid) {
+      console.error('Quick start character failed validation:', validation.errors);
+      alert('Quick start failed. Please create character manually.');
+      return;
+    }
+    
+    // Save character to game state
+    const character = this.creator.getCharacter();
+    this.gameState.state.player = {
+      ...this.gameState.state.player,
+      ...character
+    };
+    
+    console.log('✅ Quick start character created:', character.name);
+    
+    // Hide character creation
+    this.hide();
+    
+    // Start the game immediately
     this.gameState.emit('characterCreated', character);
   }
 
