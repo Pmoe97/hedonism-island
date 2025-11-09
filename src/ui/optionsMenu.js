@@ -102,7 +102,7 @@ export class OptionsMenu {
     const settingsBtn = this.modal.querySelector('#opt-settings');
     settingsBtn?.addEventListener('click', () => {
       this.hide();
-      this.settingsMenu.show();
+      this.settingsMenu.open();
     });
 
     // Main Menu option
@@ -140,12 +140,10 @@ export class OptionsMenu {
     const storyIntro = document.getElementById('story-intro');
     const gameView = document.getElementById('game-view');
     const characterCreation = document.getElementById('character-creation');
-    const globalMenuBtn = document.getElementById('global-menu-btn');
     
     if (storyIntro) storyIntro.classList.add('hidden');
     if (gameView) gameView.classList.add('hidden');
     if (characterCreation) characterCreation.classList.add('hidden');
-    if (globalMenuBtn) globalMenuBtn.classList.add('hidden');
     
     // Show main menu
     const mainMenuEl = document.getElementById('main-menu');

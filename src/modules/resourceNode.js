@@ -456,7 +456,8 @@ export class ResourceNodeManager {
   createNode(config) {
     const node = new ResourceNode({
       ...config,
-      id: config.id || `node_${this.nextNodeId++}`
+      id: config.id || `node_${this.nextNodeId++}`,
+      discovered: config.discovered !== undefined ? config.discovered : false // Default to undiscovered
     });
 
     this.nodes.set(node.id, node);

@@ -1,6 +1,8 @@
 import { Player } from './player.js';
 import { ResourceNodeManager } from './resourceNode.js';
 import { itemDB } from '../data/itemDatabase.js';
+import { NPCManager } from './npcManager.js';
+import { PerchanceAI } from './perchanceAI.js';
 
 /**
  * GameState - Central state management for Hedonism Island
@@ -21,11 +23,14 @@ export class GameState {
     // Modern system instances
     this.player = null;
     this.resourceManager = null;
+    this.npcManager = null;
+    this.perchanceAI = null;
     this.uiManagers = {
       playerHUD: null,
       inventoryUI: null,
       gatheringUI: null,
-      nodeInspector: null
+      nodeInspector: null,
+      dialogueUI: null
     };
     
     // Time control
@@ -103,6 +108,13 @@ export class GameState {
       // Create resource manager
       this.resourceManager = new ResourceNodeManager();
       
+      // Initialize AI and NPC systems
+      this.perchanceAI = new PerchanceAI();
+      this.npcManager = new NPCManager(this, this.perchanceAI);
+      
+      // Set seeded random for deterministic name generation
+      this.npcManager.setSeed(this.state.island.seed);
+      
       // Generate starter resources around spawn
       this.resourceManager.generateStarterNodes(spawnPosition, 3);
     }
@@ -113,6 +125,7 @@ export class GameState {
     this.emit('stateInitialized', {
       player: this.player,
       resourceManager: this.resourceManager,
+      npcManager: this.npcManager,
       state: this.state
     });
   }
@@ -157,11 +170,12 @@ export class GameState {
       // At 1x:   1 real second = 1 game minute
       // At 10x:  1 real second = 10 game minutes
       // At 100x: 1 real second = 100 game minutes
-      const gameMinutes = (deltaTime / 1000) * this.timeSpeed;
-      
-      if (gameMinutes > 0) {
-        this.advanceTime(gameMinutes);
-      }
+      // DISABLED: Time only advances from player actions now
+      // const gameMinutes = (deltaTime / 1000) * this.timeSpeed;
+      // 
+      // if (gameMinutes > 0) {
+      //   this.advanceTime(gameMinutes);
+      // }
 
       // Auto-save every 5 minutes of real playtime
       if (Math.floor(this.state.meta.playTime / 300) > Math.floor((this.state.meta.playTime - deltaTime / 1000) / 300)) {
@@ -528,6 +542,7 @@ export class GameState {
       },
       player: this.player ? this.player.toJSON() : null,
       resourceManager: this.resourceManager ? this.resourceManager.toJSON() : null,
+      npcManager: this.npcManager ? this.npcManager.saveNPCs() : [],
       state: {
         ...this.state,
         meta: undefined // Don't duplicate meta
@@ -656,6 +671,19 @@ export class GameState {
       };
       
       this.resourceManager = ResourceNodeManager.fromJSON(data.resourceManager, nodeConfigs);
+    }
+    
+    // Restore NPC Manager
+    if (!this.perchanceAI) {
+      this.perchanceAI = new PerchanceAI();
+    }
+    if (!this.npcManager) {
+      this.npcManager = new NPCManager(this, this.perchanceAI);
+      // Set seed for deterministic names
+      this.npcManager.setSeed(this.state.island.seed || this.generateSeed());
+    }
+    if (data.npcManager) {
+      this.npcManager.loadNPCs(data.npcManager);
     }
     
     this.emit('stateLoaded', { version: data.version || '4.0.0' });

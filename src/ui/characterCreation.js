@@ -142,10 +142,29 @@ export class CharacterCreationUI {
   }
 
   renderGenderStep() {
+    const currentSeed = this.creator.currentCharacter.mapSeed || '';
+    
     return `
       <div class="step-content">
         <h2>Choose Your Gender</h2>
         <p class="step-description">Select the gender identity for your character</p>
+        
+        <!-- Map Seed Input -->
+        <div style="margin-bottom: 25px; padding: 20px; background: rgba(74, 222, 128, 0.1); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 12px;">
+          <label for="map-seed-input" style="display: block; font-weight: bold; color: #4ade80; margin-bottom: 8px; font-size: 1.1em;">
+            🗺️ Map Seed (Optional)
+          </label>
+          <input 
+            type="text" 
+            id="map-seed-input" 
+            value="${currentSeed}"
+            placeholder="Leave empty for random seed"
+            style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.9); border: 2px solid rgba(74, 222, 128, 0.3); border-radius: 8px; color: #e2e8f0; font-size: 1em; font-family: 'Courier New', monospace;"
+          />
+          <p style="margin-top: 8px; font-size: 0.85em; color: #94a3b8;">
+            Enter a seed (text or number) to generate a specific map, or leave blank for a random map. Using the same seed will create the same island layout.
+          </p>
+        </div>
         
         <!-- Quick Start Button -->
         <div style="text-align: center; margin-bottom: 20px; padding: 15px; background: rgba(255, 215, 0, 0.1); border: 2px dashed #ffd700; border-radius: 8px;">
@@ -575,6 +594,15 @@ export class CharacterCreationUI {
     }
     if (quickStartBtn) {
       quickStartBtn.addEventListener('click', () => this.quickStart());
+    }
+    
+    // Map seed input
+    const mapSeedInput = document.getElementById('map-seed-input');
+    if (mapSeedInput) {
+      mapSeedInput.addEventListener('input', (e) => {
+        this.creator.currentCharacter.mapSeed = e.target.value.trim();
+        console.log('Map seed set to:', this.creator.currentCharacter.mapSeed || '(random)');
+      });
     }
     
     // Step 1: Gender selection

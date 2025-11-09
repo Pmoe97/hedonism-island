@@ -61,7 +61,10 @@ export class MapRenderer {
   // MAIN RENDER
   // ========================================
 
-  render(tiles) {
+  render(tiles, territoryManager = null) {
+    // Store reference for helper methods
+    this.territoryManager = territoryManager;
+    
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Dark background
@@ -91,6 +94,9 @@ export class MapRenderer {
   renderHex(tile) {
     const corners = this.hexGrid.getHexCorners(tile.q, tile.r);
     
+    // Get territory data if available
+    const territory = this.territoryManager?.getTerritory(tile.q, tile.r);
+    
     // Fill hex with terrain color
     this.ctx.beginPath();
     this.ctx.moveTo(corners[0].x, corners[0].y);
@@ -105,18 +111,24 @@ export class MapRenderer {
     this.ctx.fillStyle = this.adjustBrightness(baseColor, brightness);
     this.ctx.fill();
     
-    // Territory overlay (subtle tint)
-    if (tile.faction && tile.faction !== 'neutral') {
+    // Territory overlay - ONLY if discovered and zoomed out
+    // When zoomed out (scale < 0.4), show faction highlights for visibility
+    if (territory?.discovered && territory.owner && territory.owner !== 'neutral') {
       const territoryColors = {
+        'player': 'rgba(251, 191, 36, 0.15)',        // Yellow
         'castaways': 'rgba(251, 191, 36, 0.15)',     // Yellow
-        'tidalClan': 'rgba(59, 130, 246, 0.15)',     // Blue
-        'ridgeClan': 'rgba(132, 204, 22, 0.15)',     // Green
+        'natives_clan1': 'rgba(59, 130, 246, 0.15)', // Blue
+        'natives_clan2': 'rgba(132, 204, 22, 0.15)', // Green
         'mercenaries': 'rgba(220, 38, 38, 0.15)'     // Red
       };
       
-      const territoryColor = territoryColors[tile.faction];
-      if (territoryColor) {
-        this.ctx.fillStyle = territoryColor;
+      // Apply stronger highlight when zoomed out
+      let alpha = this.scale < 0.4 ? 0.35 : 0.15;
+      const baseColorValue = territoryColors[territory.owner];
+      
+      if (baseColorValue) {
+        const colorWithAlpha = baseColorValue.replace(/[\d.]+\)$/, `${alpha})`);
+        this.ctx.fillStyle = colorWithAlpha;
         this.ctx.fill();
       }
     }
@@ -126,9 +138,10 @@ export class MapRenderer {
     this.ctx.lineWidth = 1;
     this.ctx.stroke();
     
-    // Territory frontier borders (thicker, colored)
-    if (tile.isFrontier && tile.faction && tile.faction !== 'neutral') {
-      this.renderTerritoryBorders(tile, corners);
+    // Territory perimeter borders - ONLY for perimeter tiles
+    // Only show if discovered
+    if (territory?.discovered && territory.isPerimeter && territory.owner && territory.owner !== 'neutral') {
+      this.renderTerritoryBorders(tile, corners, territory);
     }
     
     // Draw strategic location markers
@@ -154,32 +167,32 @@ export class MapRenderer {
 
   /**
    * Render territory borders between different factions
+   * Only renders borders for perimeter tiles
    */
-  renderTerritoryBorders(tile, corners) {
+  renderTerritoryBorders(tile, corners, territory) {
     const borderColors = {
-      'castaways': '#fbbf24',
-      'tidalClan': '#3b82f6',
-      'ridgeClan': '#84cc16',
-      'mercenaries': '#dc2626'
+      'player': '#fbbf24',          // Yellow
+      'castaways': '#fbbf24',        // Yellow
+      'natives_clan1': '#3b82f6',    // Blue
+      'natives_clan2': '#84cc16',    // Green
+      'mercenaries': '#dc2626'       // Red
     };
     
-    const borderColor = borderColors[tile.faction] || '#666';
+    const borderColor = borderColors[territory.owner] || '#666';
     this.ctx.strokeStyle = borderColor;
     this.ctx.lineWidth = 3;
     this.ctx.lineCap = 'round';
     
-    // Check each edge to see if it borders a different faction
-    const neighbors = this.hexGrid.getNeighbors(tile.q, tile.r);
+    // Get adjacent territories
+    const adjacent = this.territoryManager.getAdjacentTerritories(tile.q, tile.r);
     
+    // Check each edge
     for (let i = 0; i < 6; i++) {
-      const neighbor = neighbors[i];
-      if (!neighbor) continue;
+      const neighborTerr = adjacent[i];
+      if (!neighborTerr) continue;
       
-      const neighborTile = this.getTile?.(neighbor.q, neighbor.r);
-      if (!neighborTile) continue;
-      
-      // Draw border if neighbor is different faction
-      if (neighborTile.faction !== tile.faction) {
+      // Draw border if neighbor has different owner
+      if (neighborTerr.owner !== territory.owner) {
         const startCorner = corners[i];
         const endCorner = corners[(i + 1) % 6];
         

@@ -14,6 +14,7 @@ export class TravelSystem {
     this.isTraveling = false;
     this.travelProgress = 0;
     this.travelSpeed = 1.0; // tiles per second
+    this.currentTravelDuration = 0; // Store duration for completion event
     
     // Base travel duration (in game minutes)
     this.baseTravelDuration = 10; // 10 minutes base travel time
@@ -75,12 +76,6 @@ export class TravelSystem {
       baseDuration *= (1 + elevationChange * 0.2); // 20% per elevation level
     }
 
-    // Add slight randomness to undiscovered tiles
-    if (!toTerritory.discovered) {
-      const variance = 2; // +/- 2 minutes
-      baseDuration += (Math.random() * variance * 2) - variance;
-    }
-
     return Math.max(5, Math.ceil(baseDuration)); // Minimum 5 minutes
   }
 
@@ -90,13 +85,11 @@ export class TravelSystem {
   canTravelTo(q, r) {
     const territory = this.territoryManager.getTerritory(q, r);
     if (!territory) {
-      console.log('❌ No territory found');
       return false;
     }
 
     // Can't travel through water - check terrain type
     if (territory.terrain === 'sea' || territory.terrain === 'deep_water') {
-      console.log('❌ Cannot travel to water', territory.terrain);
       return false;
     }
 
@@ -107,17 +100,13 @@ export class TravelSystem {
     const distance = Math.max(dq, dr, ds); // Proper hex distance
     
     if (distance === 0) {
-      console.log('❌ Already at this tile');
       return false; // Already at this tile
     }
     
     if (distance > 1) {
-      console.log('❌ Too far to travel', distance);
       return false; // Must be adjacent (hex distance = 1)
     }
 
-    const duration = this.calculateTravelDuration(this.currentPosition, { q, r });
-    console.log('✅ Can travel to', {q, r}, 'duration:', duration, 'minutes');
     return true;
   }
 
@@ -126,6 +115,14 @@ export class TravelSystem {
    * Returns the travel duration so caller can advance game time
    */
   startTravel(q, r) {
+    // Prevent starting new travel if already traveling
+    if (this.isTraveling) {
+      return {
+        success: false,
+        reason: 'Already traveling'
+      };
+    }
+    
     if (!this.canTravelTo(q, r)) {
       return {
         success: false,
@@ -140,6 +137,7 @@ export class TravelSystem {
     this.isTraveling = true;
     this.travelProgress = 0;
     this.travelSpeed = 1000 / travelTimeMs; // Progress per second (for visual animation)
+    this.currentTravelDuration = travelDuration; // Store for completion event
 
     // Emit travel start event
     this.emitEvent('travelStart', {
@@ -185,10 +183,13 @@ export class TravelSystem {
     if (!this.targetPosition) return;
 
     const oldPosition = { ...this.currentPosition };
+    const duration = this.currentTravelDuration; // Get stored duration
+    
     this.currentPosition = { ...this.targetPosition };
     this.targetPosition = null;
     this.isTraveling = false;
     this.travelProgress = 0;
+    this.currentTravelDuration = 0; // Reset
 
     // Update territory
     const territory = this.territoryManager.getTerritory(
@@ -216,11 +217,12 @@ export class TravelSystem {
     // Update player position
     this.player.moveTo(this.currentPosition.q, this.currentPosition.r);
 
-    // Emit arrival event
+    // Emit arrival event with duration
     this.emitEvent('travelComplete', {
       from: oldPosition,
       to: this.currentPosition,
-      territory
+      territory,
+      duration // Pass duration to event handler
     });
 
     console.log(`🚶 Arrived at (${this.currentPosition.q}, ${this.currentPosition.r})`);
@@ -258,16 +260,8 @@ export class TravelSystem {
       });
     }
 
-    // Castaways/NPCs (15% chance)
-    if (!territory.hasNPC && Math.random() < 0.15) {
-      territory.hasNPC = true;
-      territory.npcId = `npc_${territory.position.q}_${territory.position.r}`;
-      
-      discoveries.push({
-        type: 'npc',
-        npcId: territory.npcId
-      });
-    }
+    // TODO: NPC discovery (currently handled by NPCManager spawning system)
+    // NPCs are spawned at game start, not discovered through travel
 
     // Emit discovery events
     if (discoveries.length > 0) {

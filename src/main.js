@@ -13,7 +13,7 @@ import './styles/mapTravelUI.css';
 import './styles/playerHUD.css';
 import './styles/endTurnMenu.css';
 import './styles/tileInteractionUI.css';
-import './styles/timeControlUI.css';
+import './styles/dialogueUI.css';
 import { PerchanceAI } from './modules/perchanceAI.js';
 import { SceneEngine } from './modules/sceneEngine.js';
 import { GameState } from './modules/gameState.js';
@@ -41,7 +41,7 @@ import { MapTravelUI } from './ui/mapTravelUI.js';
 import { PlayerHUD } from './ui/playerHUD.js';
 import { EndTurnMenu } from './ui/endTurnMenu.js';
 import { TileInteractionUI } from './ui/tileInteractionUI.js';
-import { TimeControlUI } from './ui/timeControlUI.js';
+import { DialogueUI } from './ui/dialogueUI.js';
 import scenes from './data/scenes.json';
 
 // Game Version - increment when making breaking changes
@@ -63,7 +63,6 @@ const optionsMenu = new OptionsMenu(gameState, settingsMenu, saveManager);
 // Map will be initialized after character creation
 let mapEngine = null;
 let gameView = null;
-let globalMenuBtn = null;
 
 // Gameplay systems (initialized with game world)
 let player = null;
@@ -78,7 +77,7 @@ let mapTravelUI = null;
 let playerHUD = null;
 let endTurnMenu = null;
 let tileInteractionUI = null;
-let timeControlUI = null;
+let dialogueUI = null;
 
 // Global options menu function (accessible from gear icon)
 function showGlobalOptionsMenu() {
@@ -224,6 +223,11 @@ function initializeGameWorld(existingSeed = null) {
   // Spawn initial resource nodes near starting position
   spawnInitialResources(player.position, mapData);
   
+  // Spawn initial NPCs near starting position (async, non-blocking)
+  spawnInitialNPCs(player.position).catch(err => {
+    console.error('Failed to spawn initial NPCs:', err);
+  });
+  
   // Create game view
   gameView = new GameView(gameState, mapData, player, inventory, resourceNodeManager, territoryManager, travelSystem);
   
@@ -235,9 +239,12 @@ function initializeGameWorld(existingSeed = null) {
   gatheringUI = new GatheringUI(player, inventory, resourceNodeManager);
   craftingUI = new CraftingUI(player, gameState);
   mapTravelUI = new MapTravelUI(mapEngine, travelSystem, territoryManager);
-  timeControlUI = new TimeControlUI(gameState);
   // playerHUD = new PlayerHUD(player, () => endTurnMenu.show()); // REMOVED - duplicate of top bar
-  tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager);
+  tileInteractionUI = new TileInteractionUI(player, territoryManager, resourceNodeManager, gameState.npcManager);
+  dialogueUI = new DialogueUI(gameState.npcManager, gameState.perchanceAI);
+  
+  // Register UI managers with gameState
+  gameState.registerUI('dialogueUI', dialogueUI);
   
   console.log(`✨ All UI systems initialized`);
   
@@ -262,10 +269,15 @@ function initializeGameWorld(existingSeed = null) {
   window.game.gatheringUI = gatheringUI;
   window.game.craftingUI = craftingUI;
   window.game.mapTravelUI = mapTravelUI;
-  window.game.timeControlUI = timeControlUI;
   window.game.tileInteractionUI = tileInteractionUI;
   window.game.playerHUD = playerHUD;
   window.game.endTurnMenu = endTurnMenu;
+  window.game.uiManagers = {
+    dialogueUI: dialogueUI,
+    inventoryUI: inventoryUI,
+    gatheringUI: gatheringUI,
+    craftingUI: craftingUI
+  };
   
   console.log(`🎮 Game world fully initialized!`);
   
@@ -280,22 +292,67 @@ function spawnInitialResources(startPos, mapData) {
   console.log(`🌱 Spawned ${nodes.length} resource nodes near starting position`);
 }
 
+// Spawn initial NPCs near starting position
+async function spawnInitialNPCs(startPos) {
+  if (!gameState.npcManager) {
+    console.warn('⚠️ NPCManager not initialized, skipping NPC spawn');
+    return;
+  }
+  
+  console.log('👥 Spawning initial NPCs...');
+  
+  // Spawn 2-3 friendly castaways nearby
+  const castawayCount = 2 + Math.floor(Math.random() * 2); // 2-3 NPCs
+  
+  for (let i = 0; i < castawayCount; i++) {
+    // Spawn within 2-4 tiles from start
+    const distance = 2 + Math.floor(Math.random() * 3);
+    const angle = (Math.PI * 2 * i) / castawayCount; // Spread them out
+    
+    const q = startPos.q + Math.round(Math.cos(angle) * distance);
+    const r = startPos.r + Math.round(Math.sin(angle) * distance);
+    
+    try {
+      const npc = await gameState.npcManager.spawnNPC({
+        faction: 'castaway',
+        tile: { q, r },
+        gender: Math.random() > 0.5 ? 'female' : 'male'
+      }, true); // enrichWithAI = true
+      
+      if (npc) {
+        console.log(`  ✅ Spawned ${npc.identity.name} at (${q}, ${r})`);
+      }
+    } catch (error) {
+      console.error(`  ❌ Failed to spawn NPC ${i + 1}:`, error);
+    }
+  }
+  
+  console.log(`👥 Spawned ${castawayCount} initial NPCs`);
+}
+
 // Setup travel event listeners
 function setupTravelEvents() {
   travelSystem.on('travelStart', (data) => {
     gameView.addLogEntry(`🚶 Traveling to new location... (${data.duration} minutes)`);
-    
-    // Advance game time by travel duration
-    if (gameState && gameState.advanceTime) {
-      gameState.advanceTime(data.duration);
-    }
+    // Don't advance time here - wait for travelComplete
   });
   
   travelSystem.on('travelComplete', (data) => {
     player.position = travelSystem.currentPosition;
+    
+    // Advance game time by travel duration when travel completes
+    if (gameState && gameState.advanceTime && data.duration) {
+      gameState.advanceTime(data.duration);
+    }
+    
     gameView.addLogEntry(`✅ Arrived at ${gameView.getTerrainName(data.territory.terrain)}`);
     gameView.renderPlayerMarker();
     mapTravelUI.render();
+    
+    // Update current tile info in tile interaction UI
+    if (tileInteractionUI) {
+      tileInteractionUI.updateCurrentTile(player.position, data.territory);
+    }
   });
   
   travelSystem.on('discoveries', (data) => {
@@ -481,20 +538,6 @@ function initGame() {
     console.log('🎯 Initializing main menu...');
     mainMenu.init();
     
-    // Get global menu button reference
-    globalMenuBtn = document.getElementById('global-menu-btn');
-    
-    // Wire up global menu button
-    if (globalMenuBtn) {
-      globalMenuBtn.addEventListener('click', () => {
-        console.log('⚙️ Global options button clicked');
-        showGlobalOptionsMenu();
-      });
-      console.log('✅ Global menu button initialized');
-    } else {
-      console.warn('⚠️ Global menu button not found in DOM');
-    }
-    
     // Listen for character creation complete
     gameState.on('characterCreated', (character) => {
       console.log('✅ Character created:', character.name);
@@ -508,12 +551,6 @@ function initGame() {
       // Hide character creation
       characterCreation.hide();
       
-      // Show global menu button (now that game has started)
-      if (globalMenuBtn) {
-        globalMenuBtn.classList.remove('hidden');
-        console.log('👁️ Global menu button visible');
-      }
-      
       // Show story intro
       console.log('📖 Starting story intro...');
       storyIntro.show();
@@ -523,8 +560,11 @@ function initGame() {
     gameState.on('introComplete', () => {
       console.log('✅ Story intro complete');
       
+      // Get map seed from character if provided
+      const mapSeed = gameState.state.player?.mapSeed || undefined;
+      
       // Generate island and start game
-      const { mapEngine: map, gameView: view } = initializeGameWorld();
+      const { mapEngine: map, gameView: view } = initializeGameWorld(mapSeed);
       
       // Show game view
       console.log('🎮 Starting gameplay...');
@@ -537,11 +577,6 @@ function initGame() {
     // Listen for load game
     gameState.on('loadGame', (saveState) => {
       console.log('💾 Loading game from save...');
-      
-      // Show global menu button
-      if (globalMenuBtn) {
-        globalMenuBtn.classList.remove('hidden');
-      }
       
       // Load and restore world
       const { mapEngine: map, gameView: view } = loadGameWorld(saveState);

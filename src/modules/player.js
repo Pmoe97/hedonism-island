@@ -29,7 +29,8 @@ export class Player {
       maxHealth: 100,
       hunger: 100,      // 100 = full, 0 = starving
       thirst: 100,      // 100 = hydrated, 0 = dehydrated
-      sanity: 100       // 100 = stable, 0 = broken
+      sanity: 100,      // 100 = stable, 0 = broken
+      happiness: 75     // 100 = joyful, 0 = miserable (starts moderate)
     };
     
     // Status Effects (array of active effects)
@@ -43,7 +44,9 @@ export class Player {
       crafting: 0,
       combat: 0,
       diplomacy: 0,
-      survival: 0
+      survival: 0,
+      exploration: 0,  // Finding secrets, mapping terrain
+      claiming: 0      // Establishing territory control
     };
     
     // Inventory
@@ -133,14 +136,20 @@ export class Player {
   checkCriticalStates() {
     // Death from health
     if (this.stats.health <= 0) {
-      this.isAlive = false;
-      console.warn('💀 Player has died!');
+      if (this.isAlive) {
+        // Only log once when player first dies
+        this.isAlive = false;
+        console.warn('💀 Player has died!');
+      }
     }
     
     // Unconscious from low health
     if (this.stats.health <= 20 && this.stats.health > 0) {
-      this.isConscious = false;
-      console.warn('😵 Player is unconscious!');
+      if (this.isConscious) {
+        // Only log once when player becomes unconscious
+        this.isConscious = false;
+        console.warn('😵 Player is unconscious!');
+      }
     } else if (this.stats.health > 20) {
       this.isConscious = true;
     }
@@ -251,7 +260,10 @@ export class Player {
   gainSkillXP(skillName, amount) {
     if (this.skills[skillName] !== undefined) {
       this.skills[skillName] += amount;
-      console.log(`${skillName} skill increased: +${amount}`);
+      // Reduced console spam - only log significant gains (10+ XP)
+      if (amount >= 10) {
+        console.log(`${skillName} skill increased: +${amount}`);
+      }
     }
   }
 
@@ -399,4 +411,12 @@ export class Player {
     
     return player;
   }
+
+  // Getters for easier stat access
+  get health() { return this.stats.health; }
+  get hunger() { return this.stats.hunger; }
+  get thirst() { return this.stats.thirst; }
+  get sanity() { return this.stats.sanity; }
+  get happiness() { return this.stats.happiness; }
+  get energy() { return 100; } // Legacy compatibility - always return 100
 }

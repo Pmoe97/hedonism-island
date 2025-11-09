@@ -1,89 +1,576 @@
 /**
  * Tile Interaction UI
- * Modal for interacting with POIs (Points of Interest) on map tiles
- * - Resource Nodes (gathering)
- * - NPCs (dialogue/trading)
- * - Events (special encounters)
- * - Tile actions (rest, build, etc.)
+ * Two-part panel for tile information and actions
+ * TOP: Info about hovered tile
+ * BOTTOM: Info + context-aware actions for tile player is standing on
  */
 
 export class TileInteractionUI {
-  constructor(player, territoryManager, resourceNodeManager) {
+  constructor(player, territoryManager, resourceNodeManager, npcManager = null) {
     this.player = player;
     this.territoryManager = territoryManager;
     this.resourceNodeManager = resourceNodeManager;
-    this.modal = null;
+    this.npcManager = npcManager;
+    this.panel = null;
+    this.hoverTile = null;
     this.currentTile = null;
     this.currentPosition = null;
   }
 
-  /**
-   * Show interaction modal for a tile
-   */
-  show(position, territory) {
-    console.log('🎯 TileInteractionUI.show() called', { position, territory });
+  initialize(containerSelector = '#tile-info') {
+    this.panel = document.querySelector(containerSelector);
+    if (!this.panel) {
+      console.error('❌ Tile info panel not found:', containerSelector);
+      return;
+    }
     
-    this.currentPosition = position;
-    this.currentTile = territory;
+    this.renderPanel();
+    console.log('✅ TileInteractionUI initialized');
+  }
+
+  renderPanel() {
+    if (!this.panel) return;
     
-    // Close any existing modal
-    this.hide();
-    
-    // Get all POIs on this tile
-    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
-    const hasNPC = territory?.hasNPC;
-    const hasEvent = territory?.hasEvent;
-    const isPlayerTerritory = territory?.owner === 'player';
-    
-    console.log('📍 POIs found:', { nodes: nodes.length, hasNPC, hasEvent, isPlayerTerritory });
-    
-    // Create modal
-    this.modal = document.createElement('div');
-    this.modal.className = 'modal-overlay tile-interaction-modal';
-    this.modal.id = 'tile-interaction-modal';
-    this.modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 10000;';
-    
-    console.log('🎨 Modal element created:', this.modal);
-    
-    // Build content
-    const terrainName = this.getTerrainDisplayName(territory?.terrain || 'unknown');
-    const locationInfo = this.getLocationInfo(territory);
-    
-    this.modal.innerHTML = `
-      <div class="modal-content tile-interaction-content" style="background: white; border-radius: 16px; padding: 20px; max-width: 600px; max-height: 85vh; overflow-y: auto;">
-        <div class="modal-header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 20px; border-radius: 12px 12px 0 0; margin: -20px -20px 20px -20px;">
-          <h2 style="margin: 0; font-size: 1.5rem; color: white;">📍 ${terrainName}</h2>
-          <button class="close-btn" id="close-tile-interaction" style="background: none; border: none; font-size: 2rem; color: white; cursor: pointer; padding: 0; width: 40px; height: 40px;">✕</button>
+    this.panel.innerHTML = `
+      <div class="tile-panel-section hover-info">
+        <div class="section-header">
+          <h4>🖱️ Hover Info</h4>
         </div>
-        
-        <div class="modal-body">
-          ${locationInfo}
-          
-          <div class="poi-container">
-            <h3>Available Interactions</h3>
-            <div class="poi-list" id="poi-list">
-              ${this.buildPOIList(nodes, hasNPC, hasEvent, isPlayerTerritory, territory)}
-            </div>
-          </div>
-          
-          ${this.buildQuickActions(territory)}
+        <div class="section-content" id="hover-info-content">
+          <p class="hint">Hover over a tile to see details</p>
         </div>
-        
-        <div class="modal-footer" style="margin-top: 20px; text-align: right;">
-          <button class="btn btn-secondary" id="tile-interaction-close" style="padding: 10px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+      </div>
+      
+      <div class="tile-panel-section current-tile">
+        <div class="section-header">
+          <h4>📍 Current Location</h4>
+        </div>
+        <div class="section-content" id="current-tile-content">
+          <p class="hint">Move to a tile to see available actions</p>
+        </div>
+        <div class="tile-actions" id="tile-actions">
         </div>
       </div>
     `;
-    
-    document.body.appendChild(this.modal);
-    console.log('✅ Modal appended to body. Body children:', document.body.children.length);
-    console.log('📍 Modal in DOM:', document.getElementById('tile-interaction-modal'));
-    this.setupEventListeners();
   }
 
-  /**
-   * Get terrain display name
-   */
+  updateHoverInfo(position, territory) {
+    const content = document.getElementById('hover-info-content');
+    if (!content) return;
+    
+    if (!territory) {
+      content.innerHTML = '<p class="hint">Hover over a tile to see details</p>';
+      return;
+    }
+    
+    this.hoverTile = territory;
+    
+    const terrainName = this.getTerrainDisplayName(territory.terrain);
+    const elevation = Math.round((territory.elevation || 0) * 100);
+    const ownerInfo = territory.owner 
+      ? `<span class="owner-tag" style="color: ${this.getFactionColor(territory.owner)}">${territory.owner} (${territory.controlStrength}%)</span>`
+      : '<span class="owner-tag neutral">Unclaimed</span>';
+    
+    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
+    const discoveredNodes = nodes.filter(n => n.discovered); // Only show discovered resources
+    const poiIcons = this.getPOIIcons(discoveredNodes, territory, position);
+    
+    content.innerHTML = `
+      <div class="hover-tile-info">
+        <div class="tile-header">
+          <span class="terrain-name">${terrainName}</span>
+          <span class="coordinates">(${position.q}, ${position.r})</span>
+        </div>
+        <div class="tile-details">
+          <span class="elevation">📏 ${elevation}m</span>
+          ${ownerInfo}
+        </div>
+        ${poiIcons ? `<div class="poi-icons">${poiIcons}</div>` : ''}
+        ${territory.visited ? '<span class="visited-badge">✓ Visited</span>' : '<span class="unvisited-badge">? Unexplored</span>'}
+      </div>
+    `;
+  }
+
+  clearHoverInfo() {
+    const content = document.getElementById('hover-info-content');
+    if (content) {
+      content.innerHTML = '<p class="hint">Hover over a tile to see details</p>';
+    }
+    this.hoverTile = null;
+  }
+
+  updateCurrentTile(position, territory) {
+    this.currentPosition = position;
+    this.currentTile = territory;
+    
+    const content = document.getElementById('current-tile-content');
+    const actionsDiv = document.getElementById('tile-actions');
+    
+    if (!content || !actionsDiv) return;
+    
+    if (!territory) {
+      content.innerHTML = '<p class="hint">Move to a tile to see available actions</p>';
+      actionsDiv.innerHTML = '';
+      return;
+    }
+    
+    const terrainName = this.getTerrainDisplayName(territory.terrain);
+    const elevation = Math.round((territory.elevation || 0) * 100);
+    const ownerInfo = territory.owner 
+      ? `<span class="owner-tag" style="color: ${this.getFactionColor(territory.owner)}">${territory.owner} (${territory.controlStrength}%)</span>`
+      : '<span class="owner-tag neutral">Unclaimed</span>';
+    
+    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
+    const discoveredNodes = nodes.filter(n => n.discovered); // Only show discovered resources
+    const npcs = this.getNPCsAt(territory);
+    const hasSettlement = territory.hasSettlement;
+    
+    content.innerHTML = `
+      <div class="current-tile-info">
+        <div class="tile-header">
+          <span class="terrain-name">${terrainName}</span>
+          <span class="coordinates">(${position.q}, ${position.r})</span>
+        </div>
+        <div class="tile-details">
+          <span class="elevation">📏 ${elevation}m</span>
+          ${ownerInfo}
+        </div>
+        ${this.getPOISummary(discoveredNodes, npcs, hasSettlement)}
+      </div>
+    `;
+    
+    this.renderActionButtons(territory, discoveredNodes, npcs);
+  }
+
+  renderActionButtons(territory, nodes, npcs) {
+    const actionsDiv = document.getElementById('tile-actions');
+    if (!actionsDiv) return;
+    
+    const actions = [];
+    
+    if (nodes && nodes.length > 0) {
+      const gatherableNodes = nodes.filter(n => n.canGather(this.player).success);
+      if (gatherableNodes.length > 0) {
+        actions.push({
+          id: 'gather',
+          icon: '⛏️',
+          label: 'Gather',
+          type: 'primary',
+          submenu: this.buildGatherSubmenu(gatherableNodes)
+        });
+      }
+    }
+    
+    if (npcs && npcs.length > 0) {
+      actions.push({
+        id: 'talk',
+        icon: '💬',
+        label: 'Talk',
+        type: 'social',
+        submenu: npcs.length > 1 ? this.buildNPCSubmenu(npcs) : null,
+        data: npcs.length === 1 ? { npcId: npcs[0].identity.id } : null
+      });
+    }
+    
+    if (territory?.hasSettlement) {
+      actions.push({
+        id: 'settlement',
+        icon: '🏘️',
+        label: 'Enter Settlement',
+        type: 'primary'
+      });
+    }
+    
+    if (territory?.owner === 'player') {
+      actions.push({
+        id: 'build',
+        icon: '🔨',
+        label: 'Build',
+        type: 'construction'
+      });
+    }
+    
+    if (!territory?.fullyExplored) {
+      const explorationProgress = territory?.explorationProgress || 0;
+      actions.push({
+        id: 'explore',
+        icon: '🔍',
+        label: explorationProgress > 0 ? `Explore (${explorationProgress}%)` : 'Explore',
+        type: 'discovery'
+      });
+    }
+    
+    if (territory?.fullyExplored && (!territory?.owner || territory?.owner !== 'player' || territory?.controlStrength < 100)) {
+      const claimProgress = territory?.claimProgress || 0;
+      const isContested = territory?.owner && territory?.owner !== 'player';
+      
+      actions.push({
+        id: 'claim',
+        icon: '🏴',
+        label: claimProgress > 0 
+          ? `Claim Territory (${claimProgress}%)` 
+          : isContested 
+            ? 'Claim (Hostile!)'
+            : 'Claim Territory',
+        type: isContested ? 'combat' : 'strategic',
+        contested: isContested
+      });
+    }
+    
+    if (this.player.energy < this.player.maxEnergy) {
+      actions.push({
+        id: 'rest',
+        icon: '💤',
+        label: 'Rest',
+        type: 'recovery'
+      });
+    }
+    
+    const adjacentHostiles = this.getAdjacentHostiles();
+    if (adjacentHostiles.length > 0) {
+      actions.push({
+        id: 'attack',
+        icon: '⚔️',
+        label: 'Attack',
+        type: 'combat',
+        submenu: adjacentHostiles.length > 1 ? this.buildAttackSubmenu(adjacentHostiles) : null,
+        data: adjacentHostiles.length === 1 ? adjacentHostiles[0] : null
+      });
+    }
+    
+    if (actions.length === 0) {
+      actionsDiv.innerHTML = '<p class="no-actions">No actions available at this location</p>';
+      return;
+    }
+    
+    actionsDiv.innerHTML = `
+      <div class="actions-grid">
+        ${actions.map(action => this.renderActionButton(action)).join('')}
+      </div>
+    `;
+    
+    this.attachActionListeners();
+  }
+
+  renderActionButton(action) {
+    const hasSubmenu = action.submenu && action.submenu.length > 0;
+    
+    return `
+      <button class="tile-action-btn ${action.type}" 
+              data-action="${action.id}"
+              ${action.data ? `data-action-data='${JSON.stringify(action.data)}'` : ''}>
+        <span class="action-icon">${action.icon}</span>
+        <span class="action-label">${action.label}</span>
+        ${hasSubmenu ? '<span class="submenu-indicator">▼</span>' : ''}
+      </button>
+      ${hasSubmenu ? `
+        <div class="action-submenu hidden" data-submenu="${action.id}">
+          ${action.submenu.map(item => `
+            <button class="submenu-item" 
+                    data-parent-action="${action.id}"
+                    data-item-id="${item.id}"
+                    ${item.data ? `data-item-data='${JSON.stringify(item.data)}'` : ''}>
+              <span class="item-icon">${item.icon}</span>
+              <span class="item-label">${item.label}</span>
+              ${item.detail ? `<span class="item-detail">${item.detail}</span>` : ''}
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
+    `;
+  }
+
+  buildGatherSubmenu(nodes) {
+    return nodes.map(node => ({
+      id: node.id,
+      icon: node.sprite || '📦',
+      label: node.type,
+      detail: `${node.currentUses}/${node.maxUses} uses`,
+      data: { nodeId: node.id, type: node.type }
+    }));
+  }
+
+  buildNPCSubmenu(npcs) {
+    return npcs.map((npc, index) => ({
+      id: `npc-${npc.identity.id}`,
+      icon: '👤',
+      label: npc.identity.name || 'Stranger',
+      detail: `${npc.identity.title} (${npc.identity.faction})`,
+      data: { npcId: npc.identity.id }
+    }));
+  }
+
+  buildAttackSubmenu(hostiles) {
+    return hostiles.map((hostile, index) => ({
+      id: `hostile-${index}`,
+      icon: '⚔️',
+      label: hostile.name || 'Enemy',
+      detail: `${hostile.position.q}, ${hostile.position.r}`,
+      data: hostile
+    }));
+  }
+
+  attachActionListeners() {
+    const buttons = document.querySelectorAll('.tile-action-btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const action = btn.dataset.action;
+        const actionData = btn.dataset.actionData ? JSON.parse(btn.dataset.actionData) : null;
+        
+        const submenu = document.querySelector(`[data-submenu="${action}"]`);
+        if (submenu) {
+          submenu.classList.toggle('hidden');
+        } else {
+          this.executeAction(action, actionData);
+        }
+      });
+    });
+    
+    const submenuItems = document.querySelectorAll('.submenu-item');
+    submenuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        const parentAction = item.dataset.parentAction;
+        const itemData = item.dataset.itemData ? JSON.parse(item.dataset.itemData) : null;
+        
+        this.executeAction(parentAction, itemData);
+        
+        const submenu = item.closest('.action-submenu');
+        if (submenu) submenu.classList.add('hidden');
+      });
+    });
+  }
+
+  executeAction(action, data) {
+    // Optional: console.log('🎬 Executing action:', action, data);
+    
+    switch (action) {
+      case 'gather':
+        this.handleGather(data);
+        break;
+      case 'talk':
+        this.handleTalk(data);
+        break;
+      case 'settlement':
+        this.handleSettlement();
+        break;
+      case 'build':
+        this.handleBuild();
+        break;
+      case 'explore':
+        this.handleExplore();
+        break;
+      case 'claim':
+        this.handleClaim();
+        break;
+      case 'rest':
+        this.handleRest();
+        break;
+      case 'attack':
+        this.handleAttack(data);
+        break;
+      default:
+        console.warn('Unknown action:', action);
+    }
+  }
+
+  handleGather(data) {
+    if (!data || !data.nodeId) return;
+    
+    const node = this.resourceNodeManager.getNode(data.nodeId);
+    if (node) {
+      window.game.gatheringUI?.startGathering(node, this.player, (result) => {
+        if (result.success) {
+          this.addGameLog(`✅ Gathered ${result.items.map(i => i.name).join(', ')}`);
+          this.updateCurrentTile(this.currentPosition, this.currentTile);
+        }
+      });
+    }
+  }
+
+  handleTalk(data) {
+    if (!data || !data.npcId) {
+      console.warn('No NPC data provided for talk action');
+      return;
+    }
+    
+    // Open dialogue UI with NPC
+    const dialogueUI = window.game?.uiManagers?.dialogueUI;
+    if (dialogueUI) {
+      dialogueUI.open(data.npcId);
+    } else {
+      console.warn('DialogueUI not available');
+      this.addGameLog('� Dialogue system not initialized');
+    }
+  }
+
+  handleSettlement() {
+    this.addGameLog('🏘️ Settlement view coming soon!');
+    console.log('🏘️ Enter settlement');
+  }
+
+  handleBuild() {
+    this.addGameLog('🔨 Building system coming soon!');
+    console.log('🔨 Open build menu');
+  }
+
+  handleExplore() {
+    const territory = this.territoryManager.getTerritory(this.currentPosition.q, this.currentPosition.r);
+    if (!territory) return;
+    
+    const result = territory.explore(this.player);
+    
+    if (result.alreadyComplete) {
+      this.addGameLog('✅ This area has already been fully explored.');
+    } else if (result.success) {
+      this.addGameLog(`🔍 ${result.message} (+${result.xpGained} XP)`);
+      
+      // Show discoveries
+      if (result.discoveries && result.discoveries.length > 0) {
+        result.discoveries.forEach(discovery => {
+          switch (discovery.type) {
+            case 'resource':
+              this.addGameLog(`✨ Discovered: ${discovery.name} (${discovery.resourceType})!`);
+              break;
+            case 'npc':
+              this.addGameLog(`👤 Discovered: ${discovery.name}!`);
+              break;
+            case 'event':
+              this.addGameLog(`❗ Discovered: ${discovery.name}!`);
+              break;
+            case 'settlement':
+              this.addGameLog(`🏘️ Discovered: ${discovery.name}!`);
+              break;
+          }
+        });
+      }
+      
+      if (result.complete) {
+        this.addGameLog('🎉 Exploration complete! You can now claim this territory.');
+      }
+    } else {
+      this.addGameLog(`🔍 ${result.message} (+${result.xpGained} XP)`);
+    }
+    
+    // Refresh UI to show updated progress and newly discovered resources
+    this.updateCurrentTile(this.currentPosition, territory);
+    
+    // Trigger map re-render to show discovered resources
+    if (window.game?.gameView) {
+      window.game.gameView.renderPlayerMarker();
+    }
+  }
+
+  handleClaim() {
+    const territory = this.territoryManager.getTerritory(this.currentPosition.q, this.currentPosition.r);
+    if (!territory) return;
+    
+    // Need gameState for time advancement
+    const gameState = window.game?.gameState;
+    if (!gameState) {
+      this.addGameLog('❌ Game state not available');
+      return;
+    }
+    
+    const result = territory.attemptClaim(this.player, gameState);
+    
+    if (result.requiresExploration) {
+      this.addGameLog('❌ You must fully explore this area before claiming it.');
+    } else if (result.alreadyOwned) {
+      this.addGameLog('✅ You already control this territory.');
+    } else if (result.success) {
+      this.addGameLog(`🏴 ${result.message} (+${result.xpGained} XP) [⏱️ +${result.timeAdvanced} min]`);
+      
+      if (result.complete) {
+        this.addGameLog('🎉 Territory claimed! You now control this area.');
+        // Update perimeters when territory is claimed
+        this.territoryManager.updatePerimeters();
+      } else if (result.contested) {
+        this.addGameLog(`⚠️ Warning: The ${territory.owner} have been alerted to your claim attempt!`);
+      }
+    } else {
+      this.addGameLog(`🏴 ${result.message} (+${result.xpGained} XP) [⏱️ +${result.timeAdvanced} min]`);
+    }
+    
+    // Refresh UI to show updated progress
+    this.updateCurrentTile(this.currentPosition, territory);
+  }
+
+  handleRest() {
+    const recovery = Math.min(20, this.player.maxEnergy - this.player.energy);
+    this.player.restoreEnergy(recovery);
+    this.addGameLog(`💤 Rested and recovered ${recovery} energy`);
+    this.updateCurrentTile(this.currentPosition, this.currentTile);
+  }
+
+  handleAttack(data) {
+    this.addGameLog('⚔️ Combat system coming soon!');
+    console.log('⚔️ Attack:', data);
+  }
+
+  getPOIIcons(nodes, territory, position = null) {
+    const icons = [];
+    
+    if (nodes && nodes.length > 0) {
+      const nodeTypes = [...new Set(nodes.map(n => n.sprite || '📦'))];
+      icons.push(...nodeTypes.slice(0, 3));
+    }
+    
+    // Check for actual NPCs via NPCManager instead of old hasNPC flag
+    if (this.npcManager) {
+      const checkPos = position || this.currentPosition;
+      if (checkPos) {
+        const npcs = this.npcManager.getNPCsAtTile(checkPos);
+        if (npcs.length > 0) icons.push('👤');
+      }
+    }
+    
+    if (territory?.hasEvent) icons.push('❗');
+    if (territory?.hasSettlement) icons.push('🏘️');
+    
+    return icons.length > 0 ? icons.join(' ') : null;
+  }
+
+  getPOISummary(nodes, npcs, hasSettlement) {
+    const items = [];
+    
+    if (nodes && nodes.length > 0) {
+      items.push(`${nodes.length} resource${nodes.length > 1 ? 's' : ''}`);
+    }
+    if (npcs && npcs.length > 0) {
+      items.push(`${npcs.length} NPC${npcs.length > 1 ? 's' : ''}`);
+    }
+    if (hasSettlement) {
+      items.push('Settlement');
+    }
+    
+    if (items.length === 0) return '';
+    
+    return `<div class="poi-summary">📍 ${items.join(' • ')}</div>`;
+  }
+
+  getNPCsAt(territory) {
+    if (!this.npcManager || !this.currentPosition) {
+      return [];
+    }
+    
+    return this.npcManager.getNPCsAtTile(this.currentPosition);
+  }
+
+  getAdjacentHostiles() {
+    return [];
+  }
+
+  getFactionColor(faction) {
+    const colors = {
+      player: '#00ffff',
+      castaway: '#ffaa44',
+      native: '#44ff44',
+      mercenary: '#ff4444',
+      neutral: '#888888'
+    };
+    return colors[faction] || '#ffffff';
+  }
+
   getTerrainDisplayName(terrain) {
     const names = {
       beach: '🏖️ Beach',
@@ -99,298 +586,17 @@ export class TileInteractionUI {
       shallow_water: '🌊 Shallow Water',
       deep_water: '🌊 Deep Water',
       bamboo_forest: '🎋 Bamboo Forest',
-      volcanic: '🌋 Volcanic Area'
+      volcanic: '🌋 Volcanic Area',
+      water: '🌊 Water',
+      lowland: '🌾 Lowland',
+      highland: '⛰️ Highland'
     };
     return names[terrain] || `📍 ${terrain}`;
   }
 
-  /**
-   * Get location info card
-   */
-  getLocationInfo(territory) {
-    if (!territory) return '<p class="no-data">No territory data</p>';
-    
-    const elevation = Math.round((territory.elevation || 0) * 100);
-    const controlInfo = territory.owner 
-      ? `<div class="location-control">
-          <span class="control-owner" style="color: ${territory.getFactionColor()}">
-            Controlled by ${territory.owner}
-          </span>
-          <span class="control-strength">${territory.controlStrength}% control</span>
-        </div>`
-      : '<div class="location-control">Unclaimed Territory</div>';
-    
-    return `
-      <div class="location-info-card">
-        <div class="location-stats">
-          <span>📏 Elevation: ${elevation}m</span>
-          <span>🗺️ Position: (${territory.position.q}, ${territory.position.r})</span>
-        </div>
-        ${controlInfo}
-        ${territory.visited ? '<span class="visited-badge">✓ Visited</span>' : ''}
-      </div>
-    `;
-  }
-
-  /**
-   * Build POI list
-   */
-  buildPOIList(nodes, hasNPC, hasEvent, isPlayerTerritory, territory) {
-    let html = '';
-    
-    // Resource Nodes
-    if (nodes && nodes.length > 0) {
-      nodes.forEach(node => {
-        const canGather = node.canGather(this.player);
-        const stateIcon = node.state === 'full' ? '✅' : node.state === 'depleted' ? '❌' : '🔄';
-        
-        html += `
-          <div class="poi-card resource-node-card ${!canGather.success ? 'disabled' : ''}" 
-               data-poi-type="resource" 
-               data-node-id="${node.id}">
-            <div class="poi-icon">${node.sprite}</div>
-            <div class="poi-details">
-              <h4>${node.type} ${stateIcon}</h4>
-              <p class="poi-description">${this.getResourceDescription(node)}</p>
-              ${canGather.success 
-                ? `<div class="poi-stats">
-                    <span>⚡ ${node.energyCost} energy</span>
-                    <span>⏱️ ${(node.gatherTime / 1000).toFixed(1)}s</span>
-                    ${node.requiredTool ? `<span>🔧 ${node.requiredTool}</span>` : ''}
-                  </div>`
-                : `<p class="poi-error">❌ ${canGather.reason}</p>`
-              }
-            </div>
-            ${canGather.success 
-              ? '<button class="btn btn-primary poi-action-btn">Gather</button>'
-              : '<button class="btn btn-disabled" disabled>Cannot Gather</button>'
-            }
-          </div>
-        `;
-      });
-    }
-    
-    // NPCs
-    if (hasNPC) {
-      html += `
-        <div class="poi-card npc-card" data-poi-type="npc">
-          <div class="poi-icon">👤</div>
-          <div class="poi-details">
-            <h4>Stranger</h4>
-            <p class="poi-description">Someone is here. Perhaps they want to talk?</p>
-          </div>
-          <button class="btn btn-primary poi-action-btn">Talk</button>
-        </div>
-      `;
-    }
-    
-    // Events
-    if (hasEvent) {
-      html += `
-        <div class="poi-card event-card" data-poi-type="event">
-          <div class="poi-icon">❗</div>
-          <div class="poi-details">
-            <h4>Something Interesting</h4>
-            <p class="poi-description">You notice something unusual here...</p>
-          </div>
-          <button class="btn btn-primary poi-action-btn">Investigate</button>
-        </div>
-      `;
-    }
-    
-    // No POIs
-    if (!nodes?.length && !hasNPC && !hasEvent) {
-      html = `
-        <div class="no-pois">
-          <p>🔍 Nothing of interest here.</p>
-          <p class="hint">Explore more to find resources, people, and events!</p>
-        </div>
-      `;
-    }
-    
-    return html;
-  }
-
-  /**
-   * Get resource node description
-   */
-  getResourceDescription(node) {
-    const descriptions = {
-      tree: 'A sturdy tree. Can be chopped for wood.',
-      rock: 'A large rock formation. Can be mined for stone.',
-      berry_bush: 'A bush with ripe berries. Can be harvested.',
-      fishing_spot: 'A good spot for fishing.',
-      herb_patch: 'Wild herbs grow here.',
-      palm_tree: 'A tropical palm tree with coconuts.',
-      bamboo: 'Tall bamboo stalks, perfect for crafting.'
-    };
-    
-    const desc = descriptions[node.type] || `A ${node.type} resource.`;
-    const uses = node.currentUses > 0 ? ` (${node.currentUses}/${node.maxUses} uses left)` : ' (depleted)';
-    
-    return desc + uses;
-  }
-
-  /**
-   * Build quick actions section
-   */
-  buildQuickActions(territory) {
-    const actions = [];
-    
-    // Rest action (costs no energy, recovers some)
-    actions.push({
-      id: 'rest',
-      icon: '💤',
-      label: 'Rest Here',
-      description: 'Recover some energy',
-      enabled: this.player.energy < this.player.maxEnergy
-    });
-    
-    // Claim territory (if unclaimed)
-    if (!territory?.owner) {
-      actions.push({
-        id: 'claim',
-        icon: '🏴',
-        label: 'Claim Territory',
-        description: 'Establish control over this area',
-        enabled: true
-      });
-    }
-    
-    // Build (if player territory)
-    if (territory?.owner === 'player') {
-      actions.push({
-        id: 'build',
-        icon: '🔨',
-        label: 'Build Structure',
-        description: 'Construct a shelter or facility',
-        enabled: true
-      });
-    }
-    
-    if (actions.length === 0) return '';
-    
-    let html = '<div class="quick-actions"><h3>Quick Actions</h3><div class="quick-actions-grid">';
-    
-    actions.forEach(action => {
-      html += `
-        <button class="quick-action-btn ${!action.enabled ? 'disabled' : ''}" 
-                data-action="${action.id}"
-                ${!action.enabled ? 'disabled' : ''}>
-          <span class="action-icon">${action.icon}</span>
-          <span class="action-label">${action.label}</span>
-          <span class="action-description">${action.description}</span>
-        </button>
-      `;
-    });
-    
-    html += '</div></div>';
-    return html;
-  }
-
-  /**
-   * Setup event listeners
-   */
-  setupEventListeners() {
-    // Close button
-    const closeBtn = this.modal.querySelector('#close-tile-interaction');
-    const closeFooterBtn = this.modal.querySelector('#tile-interaction-close');
-    
-    closeBtn?.addEventListener('click', () => this.hide());
-    closeFooterBtn?.addEventListener('click', () => this.hide());
-    
-    // Close on background click
-    this.modal.addEventListener('click', (e) => {
-      if (e.target === this.modal) {
-        this.hide();
-      }
-    });
-    
-    // POI action buttons
-    const actionButtons = this.modal.querySelectorAll('.poi-action-btn');
-    actionButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const card = e.target.closest('.poi-card');
-        this.handlePOIAction(card);
-      });
-    });
-    
-    // Quick action buttons
-    const quickActions = this.modal.querySelectorAll('.quick-action-btn');
-    quickActions.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const action = e.target.closest('.quick-action-btn').dataset.action;
-        this.handleQuickAction(action);
-      });
-    });
-  }
-
-  /**
-   * Handle POI action
-   */
-  handlePOIAction(card) {
-    const type = card.dataset.poiType;
-    
-    if (type === 'resource') {
-      const nodeId = card.dataset.nodeId;
-      const node = this.resourceNodeManager.getNodeById(nodeId);
-      if (node) {
-        this.hide();
-        window.game.gatheringUI?.startGathering(node, this.player, (result) => {
-          if (result.success) {
-            console.log('✅ Gathering complete:', result);
-          }
-        });
-      }
-    } else if (type === 'npc') {
-      this.hide();
-      console.log('🗣️ NPC interaction - to be implemented');
-      this.addGameLog('🗣️ NPC dialogue system coming soon!');
-    } else if (type === 'event') {
-      this.hide();
-      console.log('❗ Event interaction - to be implemented');
-      this.addGameLog('❗ Random events coming soon!');
-    }
-  }
-
-  /**
-   * Handle quick action
-   */
-  handleQuickAction(action) {
-    if (action === 'rest') {
-      const recovery = Math.min(20, this.player.maxEnergy - this.player.energy);
-      this.player.restoreEnergy(recovery);
-      this.addGameLog(`💤 You rest for a moment and recover ${recovery} energy.`);
-      this.hide();
-    } else if (action === 'claim') {
-      const territory = this.territoryManager.getTerritory(this.currentPosition.q, this.currentPosition.r);
-      if (territory) {
-        territory.setOwner('player', 50);
-        this.addGameLog(`🏴 You've claimed this territory!`);
-        this.hide();
-      }
-    } else if (action === 'build') {
-      this.hide();
-      this.addGameLog('🔨 Building system coming soon!');
-    }
-  }
-
-  /**
-   * Add log entry to game view
-   */
   addGameLog(message) {
     if (window.game?.gameView?.addLogEntry) {
       window.game.gameView.addLogEntry(message);
-    }
-  }
-
-  /**
-   * Hide modal
-   */
-  hide() {
-    if (this.modal) {
-      this.modal.remove();
-      this.modal = null;
     }
   }
 }

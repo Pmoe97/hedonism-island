@@ -18,11 +18,30 @@ export class Territory {
     this.eventId = null;
     this.hasNPC = false;
     this.npcId = null;
+    this.hasSettlement = false;
     
     // Territory properties
     this.controlStrength = 0; // 0-100, how strongly controlled
     this.lastVisited = null;
     this.discoveredBy = null; // Who discovered it
+    
+    // Exploration system
+    this.explorationProgress = 0; // 0-100, requires 100 to be fully explored
+    this.fullyExplored = false;
+    this.explorationAttempts = 0;
+    this.explorationDifficulty = 50; // Base difficulty, modified by terrain
+    
+    // Claiming system
+    this.claimProgress = 0; // 0-100, requires 100 to claim
+    this.claimingInProgress = false;
+    this.claimingBy = null; // Faction attempting to claim
+    this.claimAttempts = 0;
+    this.claimDifficulty = 50; // Base difficulty
+    this.previousOwner = null; // Track for contested claims
+    this.factionAlerted = false; // Whether defending faction knows about claim attempt
+    
+    // Perimeter tracking
+    this.isPerimeter = false; // True if this territory borders a different faction
     
     // Travel modifiers
     this.travelCostModifier = 1.0; // Multiplier for energy cost
@@ -95,6 +114,293 @@ export class Territory {
       mercenaries: '#dc2626'    // Red
     };
     return colors[this.owner] || null;
+  }
+
+  /**
+   * Explore this territory (skill-based, incremental progress)
+   * Reveals resources and POIs as exploration progresses
+   */
+  explore(player) {
+    if (this.fullyExplored) {
+      return {
+        success: false,
+        message: 'This area has already been fully explored.',
+        alreadyComplete: true
+      };
+    }
+
+    // Calculate exploration difficulty based on terrain
+    const terrainDifficulty = this.getExplorationDifficulty();
+    
+    // Skill check: exploration skill vs difficulty
+    const skillLevel = player.skills.exploration || 0;
+    const roll = Math.random() * 100;
+    const successChance = 50 + skillLevel - terrainDifficulty;
+    const success = roll < successChance;
+    
+    this.explorationAttempts++;
+    
+    if (success) {
+      // Progress based on skill level (10-30% per success)
+      const progress = 10 + Math.floor(skillLevel / 5);
+      const oldProgress = this.explorationProgress;
+      this.explorationProgress = Math.min(100, this.explorationProgress + progress);
+      
+      // Check for resource/POI discovery at certain thresholds
+      const discoveries = this.checkForDiscoveries(oldProgress, this.explorationProgress);
+      
+      // Grant XP
+      const xpGained = Math.floor(terrainDifficulty / 2);
+      player.gainSkillXP('exploration', xpGained);
+      
+      // Check if fully explored
+      if (this.explorationProgress >= 100) {
+        this.fullyExplored = true;
+        return {
+          success: true,
+          progress: this.explorationProgress,
+          complete: true,
+          message: `You've fully explored this ${this.terrain}! The area holds no more secrets.`,
+          xpGained,
+          discoveries
+        };
+      }
+      
+      return {
+        success: true,
+        progress: this.explorationProgress,
+        complete: false,
+        message: `Exploration progress: ${this.explorationProgress}%. You learn more about the area.`,
+        xpGained,
+        discoveries
+      };
+    } else {
+      // Failed exploration still grants small XP
+      player.gainSkillXP('exploration', 1);
+      
+      return {
+        success: false,
+        progress: this.explorationProgress,
+        message: `You didn't discover anything new this time. Keep exploring!`,
+        xpGained: 1,
+        discoveries: []
+      };
+    }
+  }
+
+  /**
+   * Check if exploration progress reveals any resources or POIs
+   * Resources are discovered at different exploration thresholds
+   */
+  checkForDiscoveries(oldProgress, newProgress) {
+    const discoveries = [];
+    
+    // Get resource manager to check for resources at this location
+    const resourceManager = window.game?.resourceNodeManager;
+    if (!resourceManager) return discoveries;
+    
+    // Find resources at this location - nodes is a Map, convert to array
+    const allNodes = Array.from(resourceManager.nodes.values());
+    const resourcesHere = allNodes.filter(node => 
+      node.position.q === this.position.q && 
+      node.position.r === this.position.r &&
+      !node.discovered
+    );
+    
+    // Reveal resources at thresholds: 25%, 50%, 75%, 100%
+    const thresholds = [25, 50, 75, 100];
+    
+    thresholds.forEach(threshold => {
+      if (oldProgress < threshold && newProgress >= threshold && resourcesHere.length > 0) {
+        // Discover one resource per threshold
+        const undiscovered = resourcesHere.filter(r => !r.discovered);
+        if (undiscovered.length > 0) {
+          const resource = undiscovered[0];
+          resource.discovered = true;
+          discoveries.push({
+            type: 'resource',
+            resourceType: resource.type,
+            name: resource.resourceType,
+            threshold
+          });
+        }
+      }
+    });
+    
+    // Check for POIs (NPCs, events, strategic locations) - revealed at 50% and 100%
+    if (oldProgress < 50 && newProgress >= 50) {
+      if (this.hasNPC) {
+        discoveries.push({
+          type: 'npc',
+          name: 'an inhabitant',
+          threshold: 50
+        });
+      }
+    }
+    
+    if (oldProgress < 100 && newProgress >= 100) {
+      if (this.hasEvent) {
+        discoveries.push({
+          type: 'event',
+          name: 'something unusual',
+          threshold: 100
+        });
+      }
+      
+      if (this.hasSettlement) {
+        discoveries.push({
+          type: 'settlement',
+          name: 'a settlement',
+          threshold: 100
+        });
+      }
+    }
+    
+    return discoveries;
+  }
+
+  /**
+   * Calculate exploration difficulty based on terrain
+   */
+  getExplorationDifficulty() {
+    const terrainDifficulties = {
+      'beach': 20,
+      'lowland': 30,
+      'grassland': 25,
+      'forest': 40,
+      'rainforest': 60,
+      'jungle': 70,
+      'swamp': 65,
+      'mangrove': 55,
+      'rocky': 50,
+      'highland': 55,
+      'mountain': 80,
+      'cliff': 85,
+      'bamboo_forest': 45,
+      'volcanic': 90
+    };
+    
+    return terrainDifficulties[this.terrain] || this.explorationDifficulty;
+  }
+
+  /**
+   * Attempt to claim this territory (skill-based, time-consuming, potentially dangerous)
+   */
+  attemptClaim(player, gameState) {
+    // Must be fully explored first
+    if (!this.fullyExplored) {
+      return {
+        success: false,
+        message: 'You must fully explore this area before claiming it.',
+        requiresExploration: true
+      };
+    }
+
+    // Check if already owned by player
+    if (this.owner === 'player' && this.controlStrength >= 100) {
+      return {
+        success: false,
+        message: 'You already control this territory.',
+        alreadyOwned: true
+      };
+    }
+
+    const isContested = this.owner && this.owner !== 'player';
+    const previousOwner = this.owner;
+    
+    // Alert faction if claiming their territory (first attempt only)
+    if (isContested && !this.factionAlerted) {
+      this.factionAlerted = true;
+      this.previousOwner = this.owner;
+      // TODO: Trigger faction alert event - they may send forces
+    }
+
+    // Calculate claiming difficulty
+    const baseDifficulty = 40;
+    const contestedModifier = isContested ? 30 : 0;
+    const strengthModifier = this.controlStrength * 0.3;
+    const totalDifficulty = baseDifficulty + contestedModifier + strengthModifier;
+    
+    // Skill check
+    const skillLevel = player.skills.claiming || 0;
+    const roll = Math.random() * 100;
+    const successChance = 50 + skillLevel - totalDifficulty;
+    const success = roll < successChance;
+    
+    this.claimAttempts++;
+    this.claimingInProgress = true;
+    this.claimingBy = 'player';
+    
+    // Advance time by 1 hour (claiming takes time)
+    const timeAdvanced = 60; // 1 hour in minutes
+    if (gameState && gameState.advanceTime) {
+      gameState.advanceTime(timeAdvanced);
+    }
+    
+    if (success) {
+      // Progress based on skill (15-35% per success)
+      const progress = 15 + Math.floor(skillLevel / 4);
+      this.claimProgress = Math.min(100, this.claimProgress + progress);
+      
+      // Grant XP
+      const xpGained = Math.floor(totalDifficulty / 3);
+      player.gainSkillXP('claiming', xpGained);
+      
+      // Check if claim complete
+      if (this.claimProgress >= 100) {
+        this.setOwner('player', 100);
+        this.claimingInProgress = false;
+        this.factionAlerted = false;
+        
+        return {
+          success: true,
+          progress: this.claimProgress,
+          complete: true,
+          contested: isContested,
+          previousOwner,
+          timeAdvanced,
+          message: isContested 
+            ? `You've successfully claimed this territory from the ${previousOwner}!`
+            : `You've claimed this territory! It's now under your control.`,
+          xpGained
+        };
+      }
+      
+      return {
+        success: true,
+        progress: this.claimProgress,
+        complete: false,
+        contested: isContested,
+        timeAdvanced,
+        message: `Claiming progress: ${this.claimProgress}%. ${isContested ? 'The ' + this.owner + ' may respond soon!' : 'Continue to establish control.'}`,
+        xpGained
+      };
+    } else {
+      // Failed claim attempt
+      player.gainSkillXP('claiming', 2);
+      
+      // Small chance to lose progress if contested
+      if (isContested && Math.random() < 0.3) {
+        this.claimProgress = Math.max(0, this.claimProgress - 10);
+        return {
+          success: false,
+          progress: this.claimProgress,
+          contested: true,
+          timeAdvanced,
+          message: `Your claim attempt was resisted! You lost some progress. (${this.claimProgress}%)`,
+          xpGained: 2
+        };
+      }
+      
+      return {
+        success: false,
+        progress: this.claimProgress,
+        contested: isContested,
+        timeAdvanced,
+        message: `Claim attempt failed. Current progress: ${this.claimProgress}%`,
+        xpGained: 2
+      };
+    }
   }
 
   /**
@@ -213,6 +519,8 @@ export class TerritoryManager {
     const territory = this.getTerritory(q, r);
     if (territory) {
       territory.setOwner(faction, strength);
+      // Update perimeters when ownership changes
+      this.updatePerimeters();
       return true;
     }
     return false;
@@ -296,20 +604,37 @@ export class TerritoryManager {
   }
 
   /**
+   * Update perimeter status for all territories
+   * A perimeter tile is one that borders a different faction or neutral territory
+   */
+  updatePerimeters() {
+    this.territories.forEach(territory => {
+      if (!territory.owner || territory.owner === 'neutral') {
+        territory.isPerimeter = false;
+        return;
+      }
+
+      // Check if any neighbor has different ownership
+      const adjacent = this.getAdjacentTerritories(territory.position.q, territory.position.r);
+      territory.isPerimeter = adjacent.some(neighbor => 
+        neighbor.owner !== territory.owner
+      );
+    });
+  }
+
+  /**
    * Generate starting territories
    */
   generateStartingTerritories(playerStart) {
     console.log(`🏁 Generating starting territories at (${playerStart.q}, ${playerStart.r})`);
     
-    // Player starts with 1 tile
-    this.setOwner(playerStart.q, playerStart.r, 'player', 100);
-    
-    // Discover starting area
+    // Player starts with NO owned territory - Castaways must build from scratch
+    // Just discover and visit the starting location
     const territory = this.getTerritory(playerStart.q, playerStart.r);
     if (territory) {
       territory.discover('player');
       territory.visit();
-      console.log(`✅ Player territory discovered and visited`);
+      console.log(`✅ Starting location discovered and visited (NOT owned - must claim)`);
     } else {
       console.error(`❌ No territory found at player start position (${playerStart.q}, ${playerStart.r})`);
     }
@@ -318,8 +643,11 @@ export class TerritoryManager {
     const visible = this.getVisibleTerritories(playerStart, 2);
     console.log(`👁️ Revealed ${visible.length} visible territories`);
 
-    // Generate faction starting territories
-    this.generateFactionTerritories();
+    // Generate faction starting territories (not near player)
+    this.generateFactionTerritories(playerStart);
+
+    // Update perimeters after all territories are assigned
+    this.updatePerimeters();
 
     console.log('🏁 Starting territories generated');
   }
@@ -327,20 +655,28 @@ export class TerritoryManager {
   /**
    * Generate faction territories across the island
    */
-  generateFactionTerritories() {
+  generateFactionTerritories(playerStart) {
     const allTerritories = Array.from(this.territories.values());
     
-    // Filter suitable territories (not water, not too high elevation)
-    const suitable = allTerritories.filter(t => 
-      t.terrain !== 'deep_water' && 
-      t.terrain !== 'water' &&
-      t.elevation < 0.85 &&
-      !t.owner // Not already claimed
-    );
+    // Calculate minimum distance from player start (keep factions away from player)
+    const minDistanceFromPlayer = 15;
+    
+    // Filter suitable territories (not water, not too high elevation, far from player)
+    const suitable = allTerritories.filter(t => {
+      if (t.terrain === 'deep_water' || t.terrain === 'water') return false;
+      if (t.elevation > 0.85) return false;
+      if (t.owner) return false; // Already claimed
+      
+      // Calculate distance from player start
+      const dq = Math.abs(t.position.q - playerStart.q);
+      const dr = Math.abs(t.position.r - playerStart.r);
+      const distance = (dq + dr + Math.abs(-dq - dr)) / 2;
+      
+      return distance >= minDistanceFromPlayer;
+    });
 
-    // Randomly select starting points for each faction
+    // Randomly select starting points for each faction (NO castaways - player builds that)
     const factions = [
-      { id: 'castaways', count: 3, strength: 40 },
       { id: 'natives_clan1', count: 5, strength: 60 },
       { id: 'natives_clan2', count: 4, strength: 55 },
       { id: 'mercenaries', count: 2, strength: 70 }
@@ -348,6 +684,8 @@ export class TerritoryManager {
 
     factions.forEach(faction => {
       for (let i = 0; i < faction.count; i++) {
+        if (suitable.length === 0) break;
+        
         // Pick random territory
         const randomIndex = Math.floor(Math.random() * suitable.length);
         const territory = suitable[randomIndex];

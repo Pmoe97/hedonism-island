@@ -47,75 +47,89 @@ export class GameView {
   render() {
     const container = document.getElementById('game-view');
     const character = this.gameState.state.player;
+    const timeString = this.gameState.getTimeString ? this.gameState.getTimeString() : `Day ${this.gameState.state.time?.day || 1}`;
+    const timeOfDay = this.gameState.getTimeOfDay ? this.gameState.getTimeOfDay() : 'morning';
+    const isPaused = this.gameState.isPaused || false;
+    const timeSpeed = this.gameState.timeSpeed || 1;
     
     container.innerHTML = `
       <div class="game-container">
-        <!-- Top HUD -->
+        <!-- Optimized HUD -->
         <div class="game-hud">
+          <!-- Left: Player Profile & Stats -->
           <div class="hud-left">
-            <div class="player-info">
+            <div class="player-profile">
               <div class="player-portrait">
                 ${character.portraitUrl ? 
                   `<img src="${character.portraitUrl}" alt="${character.name}">` :
                   '<div class="portrait-placeholder">👤</div>'
                 }
               </div>
-              <div class="player-details">
-                <h3>${character.name}</h3>
-                <p class="player-stats">
-                  Day ${this.gameState.state.time?.day || 1} • ${character.gender}
-                </p>
+              <div class="player-name">${character.name}</div>
+            </div>
+            
+            <div class="stats-grid">
+              <div class="stat-cell" id="health-cell">
+                <div class="stat-icon">❤️</div>
+                <div class="stat-bar-mini">
+                  <div class="stat-bar-fill health" style="width: ${this.player.health}%" id="health-bar"></div>
+                </div>
+                <div class="stat-num" id="health-value">${Math.round(this.player.health)}</div>
+              </div>
+              <div class="stat-cell" id="hunger-cell">
+                <div class="stat-icon">🍖</div>
+                <div class="stat-bar-mini">
+                  <div class="stat-bar-fill hunger" style="width: ${this.player.hunger}%" id="hunger-bar"></div>
+                </div>
+                <div class="stat-num" id="hunger-value">${Math.round(this.player.hunger)}</div>
+              </div>
+              <div class="stat-cell" id="thirst-cell">
+                <div class="stat-icon">💧</div>
+                <div class="stat-bar-mini">
+                  <div class="stat-bar-fill thirst" style="width: ${this.player.thirst}%" id="thirst-bar"></div>
+                </div>
+                <div class="stat-num" id="thirst-value">${Math.round(this.player.thirst)}</div>
+              </div>
+              <div class="stat-cell" id="happiness-cell">
+                <div class="stat-icon">😊</div>
+                <div class="stat-bar-mini">
+                  <div class="stat-bar-fill happiness" style="width: ${this.player.happiness || 75}%" id="happiness-bar"></div>
+                </div>
+                <div class="stat-num" id="happiness-value">${Math.round(this.player.happiness || 75)}</div>
               </div>
             </div>
           </div>
           
+          <!-- Center: Action Buttons -->
           <div class="hud-center">
-            <div class="stat-bar">
-              <span class="stat-label">❤️ Health</span>
-              <div class="stat-bar-fill">
-                <div class="stat-bar-inner" style="width: ${this.player.health}%" id="health-bar"></div>
-              </div>
-              <span class="stat-value" id="health-value">${Math.round(this.player.health)}/100</span>
-            </div>
-            <div class="stat-bar">
-              <span class="stat-label">🍖 Hunger</span>
-              <div class="stat-bar-fill">
-                <div class="stat-bar-inner hunger" style="width: ${this.player.hunger}%" id="hunger-bar"></div>
-              </div>
-              <span class="stat-value" id="hunger-value">${Math.round(this.player.hunger)}/100</span>
-            </div>
-            <div class="stat-bar">
-              <span class="stat-label">💧 Thirst</span>
-              <div class="stat-bar-fill">
-                <div class="stat-bar-inner thirst" style="width: ${this.player.thirst}%" id="thirst-bar"></div>
-              </div>
-              <span class="stat-value" id="thirst-value">${Math.round(this.player.thirst)}/100</span>
-            </div>
-            <div class="stat-bar">
-              <span class="stat-label">⚡ Energy</span>
-              <div class="stat-bar-fill">
-                <div class="stat-bar-inner energy" style="width: ${this.player.energy}%" id="energy-bar"></div>
-              </div>
-              <span class="stat-value" id="energy-value">${Math.round(this.player.energy)}/100</span>
+            <div class="action-grid">
+              <button class="action-btn" id="inventory-btn" title="Inventory (I)">🎒</button>
+              <button class="action-btn" id="crafting-btn" title="Crafting (C)">🔨</button>
+              <button class="action-btn" id="skills-btn" title="Skills (K)">⭐</button>
+              <button class="action-btn" id="journal-btn" title="Journal (Coming Soon)">📖</button>
+              <button class="action-btn" id="map-btn" title="Map (Coming Soon)">🗺️</button>
+              <button class="action-btn" id="game-menu-btn" title="Menu">⚙️</button>
             </div>
           </div>
           
+          <!-- Right: Time Controls -->
           <div class="hud-right">
-            <button class="hud-btn" id="inventory-btn" title="Inventory">
-              🎒 <span>Inventory</span>
-            </button>
-            <button class="hud-btn" id="crafting-btn" title="Crafting">
-              🔨 <span>Craft</span>
-            </button>
-            <button class="hud-btn" id="skills-btn" title="Skills">
-              ⭐ <span>Skills</span>
-            </button>
-            <button class="hud-btn primary" id="end-turn-btn" title="End Turn">
-              ⏭️ <span>End Turn</span>
-            </button>
-            <button class="hud-btn" id="game-menu-btn" title="Menu">
-              ⚙️ <span>Menu</span>
-            </button>
+            <div class="time-display">
+              <div class="time-icon">${this.getTimeOfDayIcon(timeOfDay)}</div>
+              <div class="time-info">
+                <div class="time-string">${timeString}</div>
+              </div>
+            </div>
+            
+            <div class="time-controls">
+              <button class="time-btn ${isPaused ? 'active' : ''}" id="pause-btn" title="Pause (Space)">
+                ${isPaused ? '▶️' : '⏸️'}
+              </button>
+              <button class="time-btn ${!isPaused && timeSpeed === 1 ? 'active' : ''}" id="speed-1x" title="1x Speed">1x</button>
+              <button class="time-btn ${!isPaused && timeSpeed === 5 ? 'active' : ''}" id="speed-5x" title="5x Speed">5x</button>
+              <button class="time-btn ${!isPaused && timeSpeed === 10 ? 'active' : ''}" id="speed-10x" title="10x Speed">10x</button>
+              <button class="time-btn ${!isPaused && timeSpeed === 20 ? 'active' : ''}" id="speed-20x" title="20x Speed">20x</button>
+            </div>
           </div>
         </div>
 
@@ -130,6 +144,24 @@ export class GameView {
             <button class="map-control-btn" id="center-player-btn" title="Center on Player">🎯</button>
             <button class="map-control-btn" id="toggle-legend-btn" title="Toggle Legend">🗺️</button>
             <button class="map-control-btn" id="toggle-fog-btn" title="Toggle Fog of War (Debug)">👁️</button>
+          </div>
+          
+          <!-- Action Log Button/Panel (positioned below map controls) -->
+          <div class="action-log-container collapsed" id="action-log-container">
+            <div class="action-log-button" id="toggle-log-btn" title="Action Log">
+              📜
+            </div>
+            <div class="action-log-expanded">
+              <div class="action-log-header" id="action-log-header">
+                <h4>📜 Action Log</h4>
+                <span class="collapse-hint">Click to collapse</span>
+              </div>
+              <div class="log-content" id="action-log">
+                <p class="log-entry">You wake up on an unfamiliar beach...</p>
+                <p class="log-entry">The plane crash knocked you unconscious.</p>
+                <p class="log-entry">You need to find water and shelter soon.</p>
+              </div>
+            </div>
           </div>
           
           <!-- Tile Info -->
@@ -147,22 +179,21 @@ export class GameView {
             <p>⌨️ <strong>I</strong>=Inventory • <strong>C</strong>=Craft • <strong>K</strong>=Skills</p>
           </div>
         </div>
-
-        <!-- Action Log -->
-        <div class="action-log">
-          <h4>📜 Action Log</h4>
-          <div class="log-content" id="action-log">
-            <p class="log-entry">You wake up on an unfamiliar beach...</p>
-            <p class="log-entry">The plane crash knocked you unconscious.</p>
-            <p class="log-entry">You need to find water and shelter soon.</p>
-          </div>
-        </div>
       </div>
     `;
 
     // Initialize map renderer
     this.initializeMap();
     this.attachEventListeners();
+    
+    // Initialize tile interaction UI
+    if (window.game?.tileInteractionUI) {
+      window.game.tileInteractionUI.initialize('#tile-info');
+      
+      // Update current tile info for starting position
+      const startTerritory = this.territoryManager.getTerritory(this.player.position.q, this.player.position.r);
+      window.game.tileInteractionUI.updateCurrentTile(this.player.position, startTerritory);
+    }
   }
 
   initializeMap() {
@@ -170,7 +201,10 @@ export class GameView {
     if (!canvas || !this.mapData) return;
 
     this.renderer = new MapRenderer(canvas, this.mapData.hexGrid);
-    this.renderer.render(this.mapData.tiles);
+    this.renderer.render(this.mapData.tiles, this.territoryManager);
+
+    // Initialize fog of war button state
+    this.updateFogButton();
 
     // Player already positioned by TravelSystem
     console.log(`🏖️ Player at (${this.player.position.q}, ${this.player.position.r})`);
@@ -187,7 +221,7 @@ export class GameView {
     if (!this.renderer) return;
 
     // Re-render map
-    this.renderer.render(this.mapData.tiles);
+    this.renderer.render(this.mapData.tiles, this.territoryManager);
 
     // Let MapTravelUI handle territory and fog rendering
     if (window.game.mapTravelUI) {
@@ -240,9 +274,10 @@ export class GameView {
       // Safety check for node position
       if (!node || !node.position) return;
       
-      // Only render discovered nodes
+      // Only render discovered nodes in discovered territories
       const territory = this.territoryManager?.getTerritory(node.position.q, node.position.r);
       if (!territory || !territory.discovered) return;
+      if (!node.discovered) return; // Resource must be discovered through exploration
 
       const center = this.renderer.hexGrid.axialToPixel(
         node.position.q,
@@ -361,14 +396,17 @@ export class GameView {
 
     document.getElementById('toggle-fog-btn')?.addEventListener('click', () => {
       this.renderer.fogOfWarEnabled = !this.renderer.fogOfWarEnabled;
-      const btn = document.getElementById('toggle-fog-btn');
-      if (btn) {
-        btn.title = this.renderer.fogOfWarEnabled ? 
-          'Fog of War: ON (Click to disable)' : 
-          'Fog of War: OFF (Click to enable)';
-        btn.style.opacity = this.renderer.fogOfWarEnabled ? '1.0' : '0.5';
-      }
+      this.updateFogButton();
       this.renderPlayerMarker();
+    });
+
+    // Action log toggle
+    document.getElementById('toggle-log-btn')?.addEventListener('click', () => {
+      this.toggleActionLog();
+    });
+
+    document.getElementById('action-log-header')?.addEventListener('click', () => {
+      this.toggleActionLog();
     });
 
     // Window resize
@@ -390,12 +428,48 @@ export class GameView {
       this.showSkillsMenu();
     });
     
-    document.getElementById('end-turn-btn')?.addEventListener('click', () => {
-      window.game.endTurnMenu?.show();
+    document.getElementById('journal-btn')?.addEventListener('click', () => {
+      // TODO: Implement journal
+      console.log('Journal coming soon!');
+    });
+    
+    document.getElementById('map-btn')?.addEventListener('click', () => {
+      // TODO: Implement map overview
+      console.log('Map overview coming soon!');
     });
     
     document.getElementById('game-menu-btn')?.addEventListener('click', () => {
-      this.showGameMenu();
+      window.game.optionsMenu?.show();
+    });
+
+    // Time control buttons
+    document.getElementById('pause-btn')?.addEventListener('click', () => {
+      this.gameState.togglePause();
+      this.updateTimeDisplay();
+    });
+
+    document.getElementById('speed-1x')?.addEventListener('click', () => {
+      if (this.gameState.isPaused) this.gameState.resume();
+      this.gameState.setTimeSpeed(1);
+      this.updateTimeDisplay();
+    });
+
+    document.getElementById('speed-5x')?.addEventListener('click', () => {
+      if (this.gameState.isPaused) this.gameState.resume();
+      this.gameState.setTimeSpeed(5);
+      this.updateTimeDisplay();
+    });
+
+    document.getElementById('speed-10x')?.addEventListener('click', () => {
+      if (this.gameState.isPaused) this.gameState.resume();
+      this.gameState.setTimeSpeed(10);
+      this.updateTimeDisplay();
+    });
+
+    document.getElementById('speed-20x')?.addEventListener('click', () => {
+      if (this.gameState.isPaused) this.gameState.resume();
+      this.gameState.setTimeSpeed(20);
+      this.updateTimeDisplay();
     });
 
     // Only ESC key for closing modals (standard UX pattern)
@@ -407,239 +481,24 @@ export class GameView {
       }
     });
   }
-  
-  showGameMenu() {
-    // Create modal
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.id = 'game-menu-modal';
-    
-    const saves = this.gameState.listSaves();
-    const currentSave = saves.find(s => s.slotName === 'autosave');
-    
-    modal.innerHTML = `
-      <div class="modal-content game-menu-modal">
-        <div class="modal-header">
-          <h2>⚙️ Game Menu</h2>
-          <button class="close-btn" id="close-game-menu">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="game-menu-buttons">
-            <button class="menu-action-btn" id="quick-save-btn">
-              💾 Quick Save
-            </button>
-            <button class="menu-action-btn" id="save-as-btn">
-              💾 Save As...
-            </button>
-            <button class="menu-action-btn" id="load-game-btn">
-              📂 Load Game
-            </button>
-            <button class="menu-action-btn" id="export-save-btn">
-              📤 Export Save
-            </button>
-            <button class="menu-action-btn" id="import-save-btn">
-              📥 Import Save
-            </button>
-            <button class="menu-action-btn" id="settings-btn-game">
-              ⚙️ Settings
-            </button>
-            <button class="menu-action-btn danger" id="main-menu-btn">
-              🏠 Main Menu
-            </button>
-          </div>
-          ${currentSave ? `
-            <div class="save-info">
-              <h4>Current Progress</h4>
-              <p>Day ${this.gameState.state.time.day} • ${this.gameState.state.characters.length} characters</p>
-              <p>Last saved: ${new Date(currentSave.saveDate).toLocaleString()}</p>
-            </div>
-          ` : ''}
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" id="resume-game-btn">Resume Game</button>
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Attach listeners
-    document.getElementById('close-game-menu').onclick = () => modal.remove();
-    document.getElementById('resume-game-btn').onclick = () => modal.remove();
-    
-    document.getElementById('quick-save-btn').onclick = () => {
-      this.gameState.save('autosave');
-      this.addLogEntry('💾 Game saved!');
-      modal.remove();
-    };
-    
-    document.getElementById('save-as-btn').onclick = () => {
-      const name = prompt('Enter save name:', `Save ${Date.now()}`);
-      if (name) {
-        this.gameState.save(name);
-        this.addLogEntry(`💾 Game saved as "${name}"!`);
-        modal.remove();
-      }
-    };
-    
-    document.getElementById('load-game-btn').onclick = () => {
-      modal.remove();
-      this.showLoadGameMenu();
-    };
-    
-    document.getElementById('export-save-btn').onclick = () => {
-      this.gameState.exportSave();
-      this.addLogEntry('📤 Save exported!');
-    };
-    
-    document.getElementById('import-save-btn').onclick = () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json';
-      input.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            try {
-              this.gameState.importSave(event.target.result);
-              this.addLogEntry('📥 Save imported!');
-              modal.remove();
-            } catch (err) {
-              alert('Failed to import save: ' + err.message);
-            }
-          };
-          reader.readAsText(file);
-        }
-      };
-      input.click();
-    };
-    
-    document.getElementById('main-menu-btn').onclick = () => {
-      if (confirm('Return to main menu? Unsaved progress will be lost.')) {
-        this.gameState.save('autosave'); // Auto-save before quitting
-        modal.remove();
-        this.hide();
-        const mainMenu = document.getElementById('main-menu');
-        if (mainMenu) mainMenu.classList.remove('hidden');
-      }
-    };
-  }
-  
-  showLoadGameMenu() {
-    const saves = this.gameState.listSaves();
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.id = 'load-game-modal';
-    
-    let savesHTML = '';
-    if (saves.length === 0) {
-      savesHTML = '<div class="no-saves">No saved games found.</div>';
-    } else {
-      savesHTML = '<div class="save-list">';
-      saves.forEach(save => {
-        const date = new Date(save.saveDate).toLocaleString();
-        savesHTML += `
-          <div class="save-item" data-slot="${save.slotName}">
-            <div class="save-info">
-              <h4>${save.slotName}</h4>
-              <p>Day ${save.day} • ${save.characterCount} characters</p>
-              <p class="save-date">${date}</p>
-            </div>
-            <div class="save-actions">
-              <button class="btn-load-game" data-slot="${save.slotName}">Load</button>
-            </div>
-          </div>
-        `;
-      });
-      savesHTML += '</div>';
-    }
-    
-    modal.innerHTML = `
-      <div class="modal-content load-game-modal">
-        <div class="modal-header">
-          <h2>📂 Load Game</h2>
-          <button class="close-btn" id="close-load-game">✕</button>
-        </div>
-        <div class="modal-body">
-          ${savesHTML}
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="cancel-load-game">Cancel</button>
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    document.getElementById('close-load-game').onclick = () => modal.remove();
-    document.getElementById('cancel-load-game').onclick = () => modal.remove();
-    
-    modal.querySelectorAll('.btn-load-game').forEach(btn => {
-      btn.onclick = (e) => {
-        const slot = e.target.dataset.slot;
-        const savedData = localStorage.getItem(`hedonism_save_${slot}`);
-        
-        if (savedData && confirm('Load this save? Current progress will be lost.')) {
-          this.gameState.save('autosave'); // Save current before loading
-          modal.remove();
-          
-          try {
-            const saveState = JSON.parse(savedData);
-            this.gameState.emit('loadGame', saveState);
-            this.hide(); // Hide current game view, it will be recreated
-          } catch (err) {
-            alert('Failed to load save: ' + err.message);
-          }
-        }
-      };
-    });
-  }
 
   showTileInfo(event) {
     const hex = this.renderer.screenToHex(event.clientX, event.clientY);
     const tile = this.mapData.tiles.get(`${hex.q},${hex.r}`);
     
-    const infoPanel = document.getElementById('tile-info');
-    if (!tile || !infoPanel) return;
-
-    const distance = this.renderer.hexGrid.distance(
-      this.player.position.q, this.player.position.r,
-      tile.q, tile.r
-    );
-
-    // Check for strategic location
-    let locationInfo = '';
-    if (tile.isStrategic && tile.strategicLocation) {
-      const loc = tile.strategicLocation;
-      locationInfo = `
-        <div style="background: rgba(139, 92, 246, 0.2); padding: 8px; border-radius: 4px; margin: 8px 0;">
-          <h5 style="margin: 0 0 4px 0; color: #a78bfa;">📍 ${loc.name}</h5>
-          <p style="margin: 0; font-size: 12px; font-style: italic;">${loc.description}</p>
-        </div>
-      `;
+    if (!tile) {
+      // Clear hover info if no tile
+      if (window.game?.tileInteractionUI) {
+        window.game.tileInteractionUI.clearHoverInfo();
+      }
+      return;
     }
-
-    // Check for resource node
-    const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r);
-    const node = nodes && nodes.length > 0 ? nodes[0] : null;
-    let nodeInfo = '';
-    if (node) {
-      nodeInfo = `<p><strong>Resource:</strong> ${node.type} (${node.state})</p>`;
+    
+    // Update hover info in tile interaction UI
+    const territory = this.territoryManager.getTerritory(hex.q, hex.r);
+    if (window.game?.tileInteractionUI && territory) {
+      window.game.tileInteractionUI.updateHoverInfo(hex, territory);
     }
-
-    infoPanel.innerHTML = `
-      <div class="tile-info-content">
-        <h4>${this.getTerrainName(tile.terrain)}</h4>
-        <p><strong>Location:</strong> (${tile.q}, ${tile.r})</p>
-        <p><strong>Distance:</strong> ${distance} tiles</p>
-        <p><strong>Elevation:</strong> ${Math.round(tile.elevation * 100)}m</p>
-        ${tile.isLand ? `<p><strong>Moisture:</strong> ${Math.round(tile.moisture * 100)}%</p>` : ''}
-        ${tile.faction ? `<p><strong>Controlled by:</strong> ${tile.faction}</p>` : ''}
-        ${nodeInfo}
-        ${locationInfo}
-      </div>
-    `;
   }
 
   handleTileClick(event) {
@@ -675,13 +534,18 @@ export class GameView {
     // Check if clicking adjacent tile with POIs - show interaction modal
     const territory = this.territoryManager.getTerritory(hex.q, hex.r);
     const nodes = this.resourceNodeManager?.getNodesAt(hex.q, hex.r) || [];
-    const hasPOIs = nodes.length > 0 || territory?.hasNPC || territory?.hasEvent;
     
-    console.log('🔍 Checking for POIs:', { nodes: nodes.length, hasNPC: territory?.hasNPC, hasEvent: territory?.hasEvent, hasPOIs });
+    // Check for real NPCs instead of old hasNPC flag
+    let hasNPCs = false;
+    if (window.game?.state?.npcManager) {
+      const npcs = window.game.state.npcManager.getNPCsAtTile(hex);
+      hasNPCs = npcs.length > 0;
+    }
+    
+    const hasPOIs = nodes.length > 0 || hasNPCs || territory?.hasEvent;
     
     if (distance === 1 && hasPOIs) {
       // Adjacent tile with POIs - show interaction modal
-      console.log('📍 Adjacent tile with POIs - showing interaction modal');
       if (window.game?.tileInteractionUI) {
         window.game.tileInteractionUI.show(hex, territory);
       } else {
@@ -693,7 +557,6 @@ export class GameView {
 
     // Otherwise, try to travel
     if (!tile.isPassable) {
-      console.log('❌ Tile not passable');
       this.addLogEntry("❌ You can't travel there.");
       return;
     }
@@ -786,10 +649,49 @@ export class GameView {
     if (thirstBar) thirstBar.style.width = `${this.player.thirst}%`;
     if (energyBar) energyBar.style.width = `${this.player.energy}%`;
 
-    if (healthValue) healthValue.textContent = `${Math.round(this.player.health)}/100`;
-    if (hungerValue) hungerValue.textContent = `${Math.round(this.player.hunger)}/100`;
-    if (thirstValue) thirstValue.textContent = `${Math.round(this.player.thirst)}/100`;
-    if (energyValue) energyValue.textContent = `${Math.round(this.player.energy)}/100`;
+    if (healthValue) healthValue.textContent = `${Math.round(this.player.health)}`;
+    if (hungerValue) hungerValue.textContent = `${Math.round(this.player.hunger)}`;
+    if (thirstValue) thirstValue.textContent = `${Math.round(this.player.thirst)}`;
+    if (energyValue) energyValue.textContent = `${Math.round(this.player.energy)}`;
+    
+    // Update time display
+    this.updateTimeDisplay();
+  }
+  
+  updateTimeDisplay() {
+    // Update time string
+    const timeString = this.gameState.getTimeString ? this.gameState.getTimeString() : `Day ${this.gameState.state.time?.day || 1}`;
+    const timeOfDay = this.gameState.getTimeOfDay ? this.gameState.getTimeOfDay() : 'morning';
+    const timeStringEl = document.querySelector('.time-string');
+    const timeIconEl = document.querySelector('.time-icon');
+    
+    if (timeStringEl) {
+      timeStringEl.textContent = timeString;
+    }
+    
+    if (timeIconEl) {
+      timeIconEl.textContent = this.getTimeOfDayIcon(timeOfDay);
+    }
+    
+    // Update time control button states
+    const isPaused = this.gameState.isPaused || false;
+    const timeSpeed = this.gameState.timeSpeed || 1;
+    
+    const pauseBtn = document.getElementById('pause-btn');
+    const speed1x = document.getElementById('speed-1x');
+    const speed5x = document.getElementById('speed-5x');
+    const speed10x = document.getElementById('speed-10x');
+    const speed20x = document.getElementById('speed-20x');
+    
+    if (pauseBtn) {
+      pauseBtn.classList.toggle('active', isPaused);
+      pauseBtn.textContent = isPaused ? '▶️' : '⏸️';
+    }
+    
+    if (speed1x) speed1x.classList.toggle('active', !isPaused && timeSpeed === 1);
+    if (speed5x) speed5x.classList.toggle('active', !isPaused && timeSpeed === 5);
+    if (speed10x) speed10x.classList.toggle('active', !isPaused && timeSpeed === 10);
+    if (speed20x) speed20x.classList.toggle('active', !isPaused && timeSpeed === 20);
   }
 
   // Show skills menu
@@ -867,14 +769,13 @@ export class GameView {
     const entry = document.createElement('p');
     entry.className = 'log-entry';
     entry.textContent = text;
-    log.appendChild(entry);
+    
+    // Insert at the top instead of bottom
+    log.insertBefore(entry, log.firstChild);
 
-    // Auto-scroll to bottom
-    log.scrollTop = log.scrollHeight;
-
-    // Limit log entries
+    // Limit log entries (remove from bottom when too many)
     while (log.children.length > 50) {
-      log.removeChild(log.firstChild);
+      log.removeChild(log.lastChild);
     }
   }
 
@@ -893,5 +794,33 @@ export class GameView {
       'misty-peak': 'Misty Peak'
     };
     return names[terrain] || 'Unknown';
+  }
+
+  getTimeOfDayIcon(timeOfDay) {
+    const icons = {
+      'dawn': '🌅',
+      'morning': '☀️',
+      'afternoon': '🌤️',
+      'evening': '🌇',
+      'night': '🌙'
+    };
+    return icons[timeOfDay] || '🌞';
+  }
+
+  updateFogButton() {
+    const btn = document.getElementById('toggle-fog-btn');
+    if (!btn || !this.renderer) return;
+    
+    btn.title = this.renderer.fogOfWarEnabled ? 
+      'Fog of War: ON (Click to disable)' : 
+      'Fog of War: OFF (Click to enable)';
+    btn.style.opacity = this.renderer.fogOfWarEnabled ? '1.0' : '0.5';
+  }
+
+  toggleActionLog() {
+    const container = document.getElementById('action-log-container');
+    if (!container) return;
+    
+    container.classList.toggle('collapsed');
   }
 }

@@ -52,6 +52,184 @@ export class PerchanceAI {
       throw new Error(`Failed to generate text: ${error.message}`);
     }
   }
+
+  /**
+   * Extract text from Perchance AI response
+   * Removes metadata, formatting tokens, and unwanted wrappers
+   * @param {*} response - Raw response from generateText
+   * @returns {string} Clean text content
+   */
+  extractText(response) {
+    if (!response) return '';
+    
+    // If response is object with text/content property
+    if (typeof response === 'object') {
+      return response.text || response.content || String(response);
+    }
+    
+    let text = String(response);
+    
+    // Remove Perchance internal tokens
+    text = text.replace(/\[output\d*\]/gi, '');
+    text = text.replace(/\[\/output\]/gi, '');
+    text = text.replace(/\[comment\].*?\[\/comment\]/gi, '');
+    
+    // Remove common AI metadata patterns
+    text = text.replace(/^(Assistant:|AI:|Response:)\s*/i, '');
+    
+    return text.trim();
+  }
+
+  /**
+   * Sanitize NPC dialogue response
+   * Based on proven patterns from Office Clicker
+   * @param {string} rawResponse - Raw AI output
+   * @param {object} npc - NPC object for context
+   * @returns {string} Sanitized dialogue
+   */
+  sanitizeNpcResponse(rawResponse, npc = null) {
+    let text = this.extractText(rawResponse);
+    
+    // Remove common unwanted patterns
+    const unwantedPatterns = [
+      // Meta-commentary
+      /\(.*?thinks.*?\)/gi,
+      /\(.*?feels.*?\)/gi,
+      /\*.*?internally.*?\*/gi,
+      
+      // Narration
+      /^(He|She|They)\s+(said|says|replies|responds|asks|whispers|shouts)/gi,
+      /\*\*[^*]+\*\*/g, // Remove **bold** narration
+      /\*[^*]+\*/g, // Remove *italic* actions
+      
+      // Meta instructions that leaked through
+      /\[.*?INST.*?\]/gi,
+      /\[.*?SYS.*?\]/gi,
+      /<\|.*?\|>/gi,
+    ];
+    
+    for (const pattern of unwantedPatterns) {
+      text = text.replace(pattern, '');
+    }
+    
+    // Remove cringe theatrical phrases
+    const cringePhrases = [
+      /\bheh\b\.?/gi,
+      /\.{3,}/g, // Excessive ellipses (3+)
+    ];
+    
+    for (const phrase of cringePhrases) {
+      text = text.replace(phrase, '');
+    }
+    
+    // Only remove outer quotes if the ENTIRE response is a single quoted string
+    // This preserves dialogue that contains multiple quoted segments
+    const trimmed = text.trim();
+    if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.indexOf('"', 1) === trimmed.length - 1) {
+      // Only one pair of quotes wrapping everything
+      text = trimmed.slice(1, -1);
+    } else if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.indexOf("'", 1) === trimmed.length - 1) {
+      // Single quotes wrapping everything
+      text = trimmed.slice(1, -1);
+    }
+    
+    // Limit response length (prevent rambling)
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const maxSentences = 3;
+    if (sentences.length > maxSentences) {
+      text = sentences.slice(0, maxSentences).join(' ');
+    }
+    
+    // Clean up whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    
+    // Ensure first letter is capitalized
+    if (text.length > 0) {
+      text = text.charAt(0).toUpperCase() + text.slice(1);
+    }
+    
+    // Ensure ends with punctuation
+    if (text && !/[.!?]$/.test(text)) {
+      text += '.';
+    }
+    
+    return text;
+  }
+
+  /**
+   * Build conversation history for context
+   * @param {Array} history - Array of {speaker, message, timestamp} objects
+   * @param {number} maxMessages - Maximum messages to include
+   * @returns {string} Formatted history
+   */
+  buildConversationHistory(history, maxMessages = 5) {
+    if (!history || history.length === 0) return '';
+    
+    const recent = history.slice(-maxMessages);
+    const formatted = recent.map(entry => {
+      const speaker = entry.speaker === 'player' ? 'Player' : entry.npcName || 'NPC';
+      return `${speaker}: "${entry.message}"`;
+    }).join('\n');
+    
+    return formatted;
+  }
+
+  /**
+   * Analyze response for repetition issues
+   * @param {string} response - AI response
+   * @param {Array} recentResponses - Recent NPC responses
+   * @returns {boolean} True if response seems repetitive
+   */
+  analyzeResponseForRepetition(response, recentResponses = []) {
+    if (!response || recentResponses.length === 0) return false;
+    
+    const normalized = response.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    
+    // Check for exact duplicates
+    for (const recent of recentResponses) {
+      const recentNormalized = recent.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      if (normalized === recentNormalized) return true;
+      
+      // Check for high similarity (>70% same words)
+      const words1 = new Set(normalized.split(/\s+/));
+      const words2 = new Set(recentNormalized.split(/\s+/));
+      const intersection = new Set([...words1].filter(w => words2.has(w)));
+      const similarity = intersection.size / Math.max(words1.size, words2.size);
+      if (similarity > 0.7) return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Get variation strategy based on conversation state
+   * @param {object} npc - NPC object
+   * @param {string} context - Current context
+   * @returns {string} Strategy instruction
+   */
+  getVariationStrategy(npc, context = '') {
+    const strategies = [
+      'Try a different emotional tone',
+      'Reference a different aspect of your personality',
+      'Use a different conversational style (formal/casual)',
+      'Focus on a different topic',
+      'Express a contrasting opinion or mood'
+    ];
+    
+    // Rotate through strategies based on conversation count
+    const index = (npc.relationships?.player?.interactionCount || 0) % strategies.length;
+    return strategies[index];
+  }
+
+  /**
+   * Calculate temperature for regeneration attempts
+   * @param {number} attemptNumber - Current regeneration attempt
+   * @returns {number} Temperature value
+   */
+  getRegenerationTemperature(attemptNumber = 0) {
+    // Start at 0.7, increase by 0.1 per attempt, cap at 1.0
+    return Math.min(0.7 + (attemptNumber * 0.1), 1.0);
+  }
   
   /**
    * Generate image using text-to-image-plugin
@@ -158,7 +336,7 @@ export class PerchanceAI {
     const factionDesc = {
       castaway: 'a fellow castaway who washed up on the island',
       islander: 'a native islander, initially cautious of outsiders',
-      mercenary: 'a mercenary, hostile and dangerous',
+      mercenary: 'a Blacksteel mercenary, hostile and dangerous',
       tourist: 'a tourist visiting the island resort'
     }[faction] || 'a person';
 

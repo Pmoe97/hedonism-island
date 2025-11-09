@@ -1044,7 +1044,7 @@ export class MapEngine {
     
     candidates.sort((a, b) => b.score - a.score);
     return {
-      name: 'Mercenary Compound',
+      name: 'Blacksteel Compound',
       type: 'hostile-base',
       faction: 'mercenaries',
       tile: candidates[0].tile,
@@ -1764,11 +1764,10 @@ export class MapEngine {
     
     // Example faction types (to be implemented):
     const factionTypes = {
-      'survivors': { preferredTerrain: ['beach', 'forest'], size: 'small', hostility: 'friendly' },
-      'natives': { preferredTerrain: ['jungle-hill', 'rainforest'], size: 'large', hostility: 'neutral' },
-      'wildlife': { preferredTerrain: ['savanna', 'forest'], size: 'medium', hostility: 'territorial' },
-      'pirates': { preferredTerrain: ['beach', 'sea'], size: 'small', hostility: 'hostile' },
-      'cultists': { preferredTerrain: ['rocky-peak', 'ruins'], size: 'small', hostility: 'hostile' }
+      'castaway': { preferredTerrain: ['beach', 'forest'], size: 'small', hostility: 'friendly' },
+      'native': { preferredTerrain: ['jungle-hill', 'rainforest'], size: 'large', hostility: 'neutral' },
+      'mercenary': { preferredTerrain: ['ruins', 'rocky-peak'], size: 'medium', hostility: 'hostile' },
+      'wildlife': { preferredTerrain: ['savanna', 'forest'], size: 'medium', hostility: 'territorial' }
     };
     
     // TODO: Implement territory generation

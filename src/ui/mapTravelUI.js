@@ -17,6 +17,7 @@ export class MapTravelUI {
     this.territoryLayer = null;
     this.fogLayer = null;
     this.markerLayer = null;
+    this.hoverLayer = null;
   }
   
   /**
@@ -103,6 +104,16 @@ export class MapTravelUI {
     this.markerLayer.style.left = '0';
     this.markerLayer.style.pointerEvents = 'none';
     canvas.parentElement.appendChild(this.markerLayer);
+
+    // Hover highlight layer (on top of everything)
+    this.hoverLayer = document.createElement('canvas');
+    this.hoverLayer.width = canvas.width;
+    this.hoverLayer.height = canvas.height;
+    this.hoverLayer.style.position = 'absolute';
+    this.hoverLayer.style.top = '0';
+    this.hoverLayer.style.left = '0';
+    this.hoverLayer.style.pointerEvents = 'none';
+    canvas.parentElement.appendChild(this.hoverLayer);
   }
 
   /**
@@ -345,6 +356,11 @@ export class MapTravelUI {
     
     ctx.clearRect(0, 0, this.fogLayer.width, this.fogLayer.height);
     
+    // Check if fog of war is disabled (debug toggle)
+    if (renderer.fogOfWarEnabled === false) {
+      return; // Don't render any fog
+    }
+    
     // Get player position for sight radius calculation
     const playerPos = this.travelSystem.currentPosition;
     
@@ -510,15 +526,21 @@ export class MapTravelUI {
    * Render hover highlight
    */
   renderHoverHighlight() {
+    if (!this.hoverLayer) return;
+    
+    const ctx = this.hoverLayer.getContext('2d');
+    const renderer = this.getRenderer();
+    if (!renderer) return;
+    
+    // Always clear the hover layer first
+    ctx.clearRect(0, 0, this.hoverLayer.width, this.hoverLayer.height);
+    
+    // If no hovered hex, we're done (layer is now clear)
     if (!this.hoveredHex) return;
 
     const territory = this.territoryManager.getTerritory(this.hoveredHex.q, this.hoveredHex.r);
     if (!territory || !territory.visibleFromFog) return;
-
-    const renderer = this.getRenderer();
-    if (!renderer) return;
     
-    const ctx = renderer.ctx;
     const pixel = this.hexToPixel(this.hoveredHex.q, this.hoveredHex.r);
     const size = this.getHexSize();
 
@@ -656,6 +678,7 @@ export class MapTravelUI {
     if (this.territoryLayer) this.territoryLayer.remove();
     if (this.fogLayer) this.fogLayer.remove();
     if (this.markerLayer) this.markerLayer.remove();
+    if (this.hoverLayer) this.hoverLayer.remove();
     this.hideTooltip();
   }
 }
