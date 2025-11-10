@@ -183,8 +183,8 @@ RESPOND AS ${npc.identity.name.toUpperCase()}:
   const constraints = `
 CRITICAL SPEECH RULES:
 - Talk like you're having a real conversation, not writing a novel
-- BANNED PHRASES: "heh", dramatic ellipses "...", cryptic warnings, mystical nonsense
-- NO excessive punctuation or dramatic pauses
+- BANNED PHRASES: "heh", mystical nonsense, overly dramatic narration
+- NO excessive punctuation (more than 3 dots in a row)
 - NO references to tattoos, scars, or appearance unless directly asked
 - NO unsolicited life lessons or philosophical musings
 - Just answer the question like a human being would

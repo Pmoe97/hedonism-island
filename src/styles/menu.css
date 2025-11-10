@@ -113,6 +113,51 @@
   font-style: italic;
 }
 
+/* Discord Logo Link */
+.discord-logo-link {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 120px;
+  height: 120px;
+  z-index: 1001;
+  transition: all 0.3s ease;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  background: rgba(11, 12, 13, 0.9);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.discord-logo-link:hover {
+  transform: scale(1.1) translateY(-5px);
+  box-shadow: 
+    0 8px 25px rgba(0, 0, 0, 0.7),
+    0 0 30px rgba(180, 122, 60, 0.4);
+  background: rgba(11, 12, 13, 1);
+}
+
+.discord-logo-link:active {
+  transform: scale(1.05) translateY(-3px);
+}
+
+.menu-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+  transition: filter 0.3s ease;
+}
+
+.discord-logo-link:hover .menu-logo {
+  filter: 
+    drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5))
+    brightness(1.2);
+}
+
 /* Game View */
 .game-view {
   width: 100%;
@@ -259,5 +304,14 @@
     font-size: 1rem;
     padding: 12px 25px;
     text-align: center;
+  }
+  
+  .discord-logo-link {
+    width: 80px;
+    height: 80px;
+    bottom: 15px;
+    right: 15px;
+    border-radius: 15px;
+    padding: 8px;
   }
 }

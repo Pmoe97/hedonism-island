@@ -294,17 +294,21 @@ function spawnInitialResources(startPos, mapData) {
 
 // Spawn initial NPCs near starting position
 async function spawnInitialNPCs(startPos) {
+  console.log('👥 [1/6] spawnInitialNPCs() called');
+  
   if (!gameState.npcManager) {
     console.warn('⚠️ NPCManager not initialized, skipping NPC spawn');
     return;
   }
-  
-  console.log('👥 Spawning initial NPCs...');
+  console.log('👥 [2/6] NPCManager exists');
   
   // Spawn 2-3 friendly castaways nearby
   const castawayCount = 2 + Math.floor(Math.random() * 2); // 2-3 NPCs
+  console.log(`👥 [3/6] Will spawn ${castawayCount} castaways`);
   
   for (let i = 0; i < castawayCount; i++) {
+    console.log(`👥 [4/6] Starting spawn for NPC ${i + 1}/${castawayCount}`);
+    
     // Spawn within 2-4 tiles from start
     const distance = 2 + Math.floor(Math.random() * 3);
     const angle = (Math.PI * 2 * i) / castawayCount; // Spread them out
@@ -312,22 +316,40 @@ async function spawnInitialNPCs(startPos) {
     const q = startPos.q + Math.round(Math.cos(angle) * distance);
     const r = startPos.r + Math.round(Math.sin(angle) * distance);
     
+    console.log(`👥   [4a] NPC ${i + 1} position: (${q}, ${r}), distance: ${distance}`);
+    
     try {
+      console.log(`👥   [4b] Calling spawnNPC for NPC ${i + 1}...`);
+      
       const npc = await gameState.npcManager.spawnNPC({
         faction: 'castaway',
         tile: { q, r },
         gender: Math.random() > 0.5 ? 'female' : 'male'
-      }, true); // enrichWithAI = true
+      }, false); // enrichWithAI = false - spawn instantly with deterministic data
+      
+      console.log(`👥   [4c] spawnNPC returned for NPC ${i + 1}`);
       
       if (npc) {
-        console.log(`  ✅ Spawned ${npc.identity.name} at (${q}, ${r})`);
+        console.log(`👥   [4d] ✅ Spawned ${npc.identity.name} at (${q}, ${r})`);
+        
+        // Optionally enrich with AI in background (don't await - non-blocking)
+        gameState.npcManager.enrichWithAI(npc).catch(err => {
+          console.warn(`  ⚠️ Failed to AI-enrich ${npc.identity.name}:`, err);
+        });
+      } else {
+        console.warn(`👥   [4e] ⚠️ spawnNPC returned null for NPC ${i + 1}`);
       }
     } catch (error) {
-      console.error(`  ❌ Failed to spawn NPC ${i + 1}:`, error);
+      console.error(`👥   [4f] ❌ Failed to spawn NPC ${i + 1}:`, error);
     }
   }
   
-  console.log(`👥 Spawned ${castawayCount} initial NPCs`);
+  console.log(`👥 [5/6] Finished spawning loop`);
+  console.log(`👥 [6/6] ✅ Spawned ${castawayCount} initial NPCs - COMPLETE`);
+  
+  // Start background generation after initial NPCs are spawned
+  console.log('🔄 Starting background NPC generation...');
+  gameState.npcManager.startBackgroundGeneration();
 }
 
 // Setup travel event listeners

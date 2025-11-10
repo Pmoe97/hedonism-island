@@ -193,6 +193,21 @@ export class PersonalityDatabase {
   }
 
   /**
+   * Normalize faction name to match database keys
+   */
+  normalizeFaction(faction) {
+    const factionMap = {
+      'castaway': 'castaway',
+      'natives_clan1': 'native',
+      'natives_clan2': 'native',
+      'mercenaries': 'mercenary',
+      'native': 'native',
+      'mercenary': 'mercenary'
+    };
+    return factionMap[faction] || 'castaway';
+  }
+
+  /**
    * Generate complete personality for NPC
    * @param {string} faction - NPC faction
    * @param {object} seededRandom - Seeded random generator
@@ -200,15 +215,16 @@ export class PersonalityDatabase {
    */
   generatePersonality(faction, seededRandom) {
     const data = this.data;
-    const ranges = data.traitRanges[faction];
+    const normalizedFaction = this.normalizeFaction(faction);
+    const ranges = data.traitRanges[normalizedFaction];
 
     // Generate Big Five traits within faction ranges
     const traits = {
-      openness: seededRandom.nextInt(ranges.openness.min, ranges.openness.max),
-      conscientiousness: seededRandom.nextInt(ranges.conscientiousness.min, ranges.conscientiousness.max),
-      extraversion: seededRandom.nextInt(ranges.extraversion.min, ranges.extraversion.max),
-      agreeableness: seededRandom.nextInt(ranges.agreeableness.min, ranges.agreeableness.max),
-      neuroticism: seededRandom.nextInt(ranges.neuroticism.min, ranges.neuroticism.max)
+      openness: seededRandom.int(ranges.openness.min, ranges.openness.max),
+      conscientiousness: seededRandom.int(ranges.conscientiousness.min, ranges.conscientiousness.max),
+      extraversion: seededRandom.int(ranges.extraversion.min, ranges.extraversion.max),
+      agreeableness: seededRandom.int(ranges.agreeableness.min, ranges.agreeableness.max),
+      neuroticism: seededRandom.int(ranges.neuroticism.min, ranges.neuroticism.max)
     };
 
     // Sexual orientation
@@ -217,45 +233,45 @@ export class PersonalityDatabase {
     // Sexual preferences
     const dominance = seededRandom.choice(data.sexualPreferences.dominance);
     const intensity = seededRandom.choice(data.sexualPreferences.intensity);
-    const interestCount = seededRandom.nextInt(2, 5); // 2-4 interests
+    const interestCount = seededRandom.int(2, 5); // 2-4 interests
     const interests = [];
     const availableInterests = [...data.sexualPreferences.interests];
     
     for (let i = 0; i < interestCount && availableInterests.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableInterests.length);
+      const index = seededRandom.int(0, availableInterests.length - 1);
       interests.push(availableInterests[index]);
       availableInterests.splice(index, 1);
     }
 
     // Quirks (pick 2-3 from faction pool)
-    const quirkCount = seededRandom.nextInt(2, 4);
+    const quirkCount = seededRandom.int(2, 4);
     const quirks = [];
-    const availableQuirks = [...data.quirks[faction]];
+    const availableQuirks = [...data.quirks[normalizedFaction]];
     
     for (let i = 0; i < quirkCount && availableQuirks.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableQuirks.length);
+      const index = seededRandom.int(0, availableQuirks.length - 1);
       quirks.push(availableQuirks[index]);
       availableQuirks.splice(index, 1);
     }
 
     // Fears (pick 2-3)
-    const fearCount = seededRandom.nextInt(2, 4);
+    const fearCount = seededRandom.int(2, 4);
     const fears = [];
-    const availableFears = [...data.fears[faction]];
+    const availableFears = [...data.fears[normalizedFaction]];
     
     for (let i = 0; i < fearCount && availableFears.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableFears.length);
+      const index = seededRandom.int(0, availableFears.length - 1);
       fears.push(availableFears[index]);
       availableFears.splice(index, 1);
     }
 
     // Desires (pick 2-3)
-    const desireCount = seededRandom.nextInt(2, 4);
+    const desireCount = seededRandom.int(2, 4);
     const desires = [];
-    const availableDesires = [...data.desires[faction]];
+    const availableDesires = [...data.desires[normalizedFaction]];
     
     for (let i = 0; i < desireCount && availableDesires.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableDesires.length);
+      const index = seededRandom.int(0, availableDesires.length - 1);
       desires.push(availableDesires[index]);
       availableDesires.splice(index, 1);
     }

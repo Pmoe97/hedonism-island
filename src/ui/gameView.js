@@ -201,7 +201,7 @@ export class GameView {
     if (!canvas || !this.mapData) return;
 
     this.renderer = new MapRenderer(canvas, this.mapData.hexGrid);
-    this.renderer.render(this.mapData.tiles, this.territoryManager);
+    this.renderer.render(this.mapData.tiles, this.territoryManager, this.player.position);
 
     // Initialize fog of war button state
     this.updateFogButton();
@@ -220,8 +220,8 @@ export class GameView {
   renderPlayerMarker() {
     if (!this.renderer) return;
 
-    // Re-render map
-    this.renderer.render(this.mapData.tiles, this.territoryManager);
+    // Re-render map with player position
+    this.renderer.render(this.mapData.tiles, this.territoryManager, this.player.position);
 
     // Let MapTravelUI handle territory and fog rendering
     if (window.game.mapTravelUI) {
@@ -330,17 +330,33 @@ export class GameView {
     let isDragging = false;
     let lastX = 0;
     let lastY = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    const DRAG_THRESHOLD = 5; // Pixels - movement less than this is still considered a click
 
     canvas.addEventListener('mousedown', (e) => {
       isDragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      console.log('🖱️ MOUSEDOWN at', dragStartX, dragStartY);
     });
 
     canvas.addEventListener('mousemove', (e) => {
       if (isDragging) {
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
+        
+        // Calculate current drag distance for debugging
+        const currentDragDistance = Math.sqrt(
+          Math.pow(e.clientX - dragStartX, 2) + 
+          Math.pow(e.clientY - dragStartY, 2)
+        );
+        
+        if (currentDragDistance > DRAG_THRESHOLD && currentDragDistance < DRAG_THRESHOLD + 10) {
+          console.log('🖱️ DRAGGING - distance:', currentDragDistance.toFixed(1), 'px (threshold:', DRAG_THRESHOLD, ')');
+        }
         
         this.renderer.pan(dx, dy);
         this.renderPlayerMarker();
@@ -354,10 +370,24 @@ export class GameView {
     });
 
     canvas.addEventListener('mouseup', (e) => {
-      if (!isDragging) {
-        // Click to interact (travel or gather)
+      // Calculate total distance dragged
+      const totalDragDistance = Math.sqrt(
+        Math.pow(e.clientX - dragStartX, 2) + 
+        Math.pow(e.clientY - dragStartY, 2)
+      );
+      
+      console.log('🖱️ MOUSEUP at', e.clientX, e.clientY);
+      console.log('🖱️ Total drag distance:', totalDragDistance.toFixed(1), 'px (threshold:', DRAG_THRESHOLD, ')');
+      
+      // Only treat as click if movement was minimal (less than threshold)
+      if (isDragging && totalDragDistance < DRAG_THRESHOLD) {
+        console.log('✅ CLICK detected - handling tile click');
+        // This was a click, not a drag
         this.handleTileClick(e);
+      } else {
+        console.log('❌ DRAG detected - ignoring click (distance too large)');
       }
+      
       isDragging = false;
     });
 

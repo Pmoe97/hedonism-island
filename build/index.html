@@ -162,11 +162,11 @@ class PerchanceAI {
     }
     const cringePhrases = [
       /\bheh\b\.?/gi,
-      /\.{3,}/g
-      // Excessive ellipses (3+)
+      /\.{4,}/g
+      // Only remove REALLY excessive ellipses (4+), allow normal "..." or ".."
     ];
     for (const phrase of cringePhrases) {
-      text = text.replace(phrase, "");
+      text = text.replace(phrase, "...");
     }
     const trimmed = text.trim();
     if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.indexOf('"', 1) === trimmed.length - 1) {
@@ -4775,6 +4775,22 @@ class AppearanceDatabase {
     };
   }
   /**
+   * Normalize faction name to database key
+   * @param {string} faction - Game faction name
+   * @returns {string} Database faction key
+   */
+  normalizeFaction(faction) {
+    const factionMap = {
+      "castaway": "castaway",
+      "natives_clan1": "native",
+      "natives_clan2": "native",
+      "mercenaries": "mercenary",
+      "native": "native",
+      "mercenary": "mercenary"
+    };
+    return factionMap[faction] || "castaway";
+  }
+  /**
    * Generate complete appearance for NPC
    * @param {string} faction - NPC faction
    * @param {string} gender - NPC gender
@@ -4782,32 +4798,70 @@ class AppearanceDatabase {
    * @returns {object} Complete appearance data
    */
   generateAppearance(faction, gender, seededRandom) {
+    console.log("👗 [appearance 1/12] Starting generateAppearance");
     const data = this.data;
-    const genderKey = gender === "male" || gender === "female" ? gender : "other";
-    const ageRange = data.ageRanges[faction];
-    const age = seededRandom.nextInt(ageRange.min, ageRange.max);
+    const normalizedFaction = this.normalizeFaction(faction);
+    const genderKey = gender === "male" || gender === "female" ? gender : "female";
+    console.log(`👗 [appearance 2/12] Gender key: ${genderKey} (from ${gender}), Faction: ${normalizedFaction} (from ${faction})`);
+    const ageRange = data.ageRanges[normalizedFaction];
+    const age = seededRandom.int(ageRange.min, ageRange.max);
+    console.log(`👗 [appearance 3/12] Age: ${age}`);
     const heightRange = data.heightRanges[genderKey];
-    const height = seededRandom.nextInt(heightRange.min, heightRange.max);
-    const skinTone = this.weightedChoice(data.skinTones[faction], seededRandom);
-    const hairColor = this.weightedChoice(data.hairColors[faction], seededRandom);
-    const hairStyles = data.hairStyles[genderKey][faction];
+    const height = seededRandom.int(heightRange.min, heightRange.max);
+    console.log(`👗 [appearance 4/12] Height: ${height}`);
+    console.log("👗 [appearance 5/12] Generating skin tone...");
+    const skinTone = this.weightedChoice(data.skinTones[normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 5b/12] Skin tone: ${skinTone}`);
+    console.log("👗 [appearance 6/12] Generating hair color...");
+    const hairColor = this.weightedChoice(data.hairColors[normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 6b/12] Hair color: ${hairColor}`);
+    console.log("👗 [appearance 7/12] Generating hair style...");
+    const hairStyles = data.hairStyles[genderKey][normalizedFaction];
     const hairStyle = seededRandom.choice(hairStyles);
+    console.log(`👗 [appearance 7b/12] Hair style: ${hairStyle}`);
+    console.log("👗 [appearance 8/12] Generating hair length...");
     const hairLength = seededRandom.choice(data.hairLengths[genderKey]);
+    console.log(`👗 [appearance 8b/12] Hair length: ${hairLength}`);
+    console.log("👗 [appearance 9/12] Generating eye color...");
     const eyeColor = this.weightedChoice(data.eyeColors, seededRandom);
-    const build = this.weightedChoice(data.bodyBuilds[genderKey][faction], seededRandom);
-    const clothingOptions = data.clothing[faction][genderKey];
+    console.log(`👗 [appearance 9b/12] Eye color: ${eyeColor}`);
+    console.log("👗 [appearance 10/12] Generating body build...");
+    const build = this.weightedChoice(data.bodyBuilds[genderKey][normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 10b/12] Build: ${build}`);
+    console.log("👗 [appearance 11/12] Generating clothing...");
+    const clothingOptions = data.clothing[normalizedFaction][genderKey];
     const clothing = seededRandom.choice(clothingOptions);
-    const featurePool = data.distinctiveFeatures[faction];
-    const featureCount = seededRandom.nextInt(2, 4);
+    console.log(`👗 [appearance 11b/12] Clothing: ${clothing}`);
+    console.log("👗 [appearance 11c/12] Generating distinctive features...");
+    const featurePool = data.distinctiveFeatures[normalizedFaction];
+    console.log(`👗 [appearance 11c1] Feature pool size: ${featurePool.length}`);
+    const featureCount = seededRandom.int(2, 4);
+    console.log(`👗 [appearance 11c2] Requested features: ${featureCount}`);
     const distinctiveFeatures = [];
     const usedIndices = /* @__PURE__ */ new Set();
-    while (distinctiveFeatures.length < featureCount && usedIndices.size < featurePool.length) {
-      const index = seededRandom.nextInt(0, featurePool.length);
+    const maxFeatures = Math.min(featureCount, featurePool.length);
+    console.log(`👗 [appearance 11c3] Max features (capped): ${maxFeatures}`);
+    let attempts = 0;
+    const maxAttempts = featurePool.length * 3;
+    while (distinctiveFeatures.length < maxFeatures && attempts < maxAttempts) {
+      attempts++;
+      const index = seededRandom.int(0, featurePool.length - 1);
+      console.log(`👗 [appearance 11c4] Attempt ${attempts}: index=${index}, already used=${usedIndices.has(index)}`);
       if (!usedIndices.has(index)) {
         usedIndices.add(index);
         distinctiveFeatures.push(featurePool[index]);
+        console.log(`👗 [appearance 11c5] Added feature: "${featurePool[index]}" (total: ${distinctiveFeatures.length})`);
+      }
+      if (usedIndices.size >= featurePool.length) {
+        console.log(`👗 [appearance 11c6] Used all available features (${usedIndices.size}), breaking`);
+        break;
       }
     }
+    if (attempts >= maxAttempts) {
+      console.warn(`👗 [appearance 11c7] ⚠️ Hit max attempts (${maxAttempts}), forcing exit`);
+    }
+    console.log(`👗 [appearance 11d/12] Features: ${distinctiveFeatures.length} features selected in ${attempts} attempts`);
+    console.log("👗 [appearance 12/12] ✅ Appearance generation complete");
     return {
       gender,
       age,
@@ -5051,6 +5105,20 @@ class PersonalityDatabase {
     };
   }
   /**
+   * Normalize faction name to match database keys
+   */
+  normalizeFaction(faction) {
+    const factionMap = {
+      "castaway": "castaway",
+      "natives_clan1": "native",
+      "natives_clan2": "native",
+      "mercenaries": "mercenary",
+      "native": "native",
+      "mercenary": "mercenary"
+    };
+    return factionMap[faction] || "castaway";
+  }
+  /**
    * Generate complete personality for NPC
    * @param {string} faction - NPC faction
    * @param {object} seededRandom - Seeded random generator
@@ -5058,46 +5126,47 @@ class PersonalityDatabase {
    */
   generatePersonality(faction, seededRandom) {
     const data = this.data;
-    const ranges = data.traitRanges[faction];
+    const normalizedFaction = this.normalizeFaction(faction);
+    const ranges = data.traitRanges[normalizedFaction];
     const traits = {
-      openness: seededRandom.nextInt(ranges.openness.min, ranges.openness.max),
-      conscientiousness: seededRandom.nextInt(ranges.conscientiousness.min, ranges.conscientiousness.max),
-      extraversion: seededRandom.nextInt(ranges.extraversion.min, ranges.extraversion.max),
-      agreeableness: seededRandom.nextInt(ranges.agreeableness.min, ranges.agreeableness.max),
-      neuroticism: seededRandom.nextInt(ranges.neuroticism.min, ranges.neuroticism.max)
+      openness: seededRandom.int(ranges.openness.min, ranges.openness.max),
+      conscientiousness: seededRandom.int(ranges.conscientiousness.min, ranges.conscientiousness.max),
+      extraversion: seededRandom.int(ranges.extraversion.min, ranges.extraversion.max),
+      agreeableness: seededRandom.int(ranges.agreeableness.min, ranges.agreeableness.max),
+      neuroticism: seededRandom.int(ranges.neuroticism.min, ranges.neuroticism.max)
     };
     const orientation = this.weightedChoice(data.sexualOrientations, seededRandom);
     const dominance = seededRandom.choice(data.sexualPreferences.dominance);
     const intensity = seededRandom.choice(data.sexualPreferences.intensity);
-    const interestCount = seededRandom.nextInt(2, 5);
+    const interestCount = seededRandom.int(2, 5);
     const interests = [];
     const availableInterests = [...data.sexualPreferences.interests];
     for (let i = 0; i < interestCount && availableInterests.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableInterests.length);
+      const index = seededRandom.int(0, availableInterests.length - 1);
       interests.push(availableInterests[index]);
       availableInterests.splice(index, 1);
     }
-    const quirkCount = seededRandom.nextInt(2, 4);
+    const quirkCount = seededRandom.int(2, 4);
     const quirks = [];
-    const availableQuirks = [...data.quirks[faction]];
+    const availableQuirks = [...data.quirks[normalizedFaction]];
     for (let i = 0; i < quirkCount && availableQuirks.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableQuirks.length);
+      const index = seededRandom.int(0, availableQuirks.length - 1);
       quirks.push(availableQuirks[index]);
       availableQuirks.splice(index, 1);
     }
-    const fearCount = seededRandom.nextInt(2, 4);
+    const fearCount = seededRandom.int(2, 4);
     const fears = [];
-    const availableFears = [...data.fears[faction]];
+    const availableFears = [...data.fears[normalizedFaction]];
     for (let i = 0; i < fearCount && availableFears.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableFears.length);
+      const index = seededRandom.int(0, availableFears.length - 1);
       fears.push(availableFears[index]);
       availableFears.splice(index, 1);
     }
-    const desireCount = seededRandom.nextInt(2, 4);
+    const desireCount = seededRandom.int(2, 4);
     const desires = [];
-    const availableDesires = [...data.desires[faction]];
+    const availableDesires = [...data.desires[normalizedFaction]];
     for (let i = 0; i < desireCount && availableDesires.length > 0; i++) {
-      const index = seededRandom.nextInt(0, availableDesires.length);
+      const index = seededRandom.int(0, availableDesires.length - 1);
       desires.push(availableDesires[index]);
       availableDesires.splice(index, 1);
     }
@@ -5318,6 +5387,20 @@ class BackgroundDatabase {
     };
   }
   /**
+   * Normalize faction name to match database keys
+   */
+  normalizeFaction(faction) {
+    const factionMap = {
+      "castaway": "castaway",
+      "natives_clan1": "native",
+      "natives_clan2": "native",
+      "mercenaries": "mercenary",
+      "native": "native",
+      "mercenary": "mercenary"
+    };
+    return factionMap[faction] || "castaway";
+  }
+  /**
    * Generate background foundation for NPC
    * (AI will flesh out full backstory using these elements)
    * @param {string} faction - NPC faction
@@ -5326,8 +5409,9 @@ class BackgroundDatabase {
    * @returns {object} Background foundation data
    */
   generateBackground(faction, role, seededRandom) {
-    const data = this.data[faction];
-    if (faction === "castaway") {
+    const normalizedFaction = this.normalizeFaction(faction);
+    const data = this.data[normalizedFaction];
+    if (normalizedFaction === "castaway") {
       return {
         faction: "castaway",
         mysteriousSkill: seededRandom.choice(data.mysteriousSkills),
@@ -5340,7 +5424,7 @@ class BackgroundDatabase {
         familyStatus: "unknown (amnesia)"
       };
     }
-    if (faction === "native") {
+    if (normalizedFaction === "native") {
       return {
         faction: "native",
         tribe: seededRandom.choice(data.tribes),
@@ -5354,7 +5438,7 @@ class BackgroundDatabase {
         familyStatus: seededRandom.choice(data.lineages)
       };
     }
-    if (faction === "mercenary") {
+    if (normalizedFaction === "mercenary") {
       return {
         faction: "mercenary",
         employer: "Blacksteel Solutions",
@@ -5419,23 +5503,42 @@ Include: why they joined Blacksteel, notable past operations, what they're doing
 }
 class SeededRandom {
   constructor(seed = Date.now()) {
+    if (typeof seed === "string") {
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash << 5) - hash + seed.charCodeAt(i);
+        hash = hash & hash;
+      }
+      seed = Math.abs(hash);
+      console.log(`🌱 SeededRandom constructor: converted string to numeric seed=${seed}`);
+    } else {
+      console.log(`🌱 SeededRandom constructor: seed=${seed}, type=${typeof seed}`);
+    }
     this.seed = seed;
     this.state = seed;
+    console.log(`🌱 SeededRandom state initialized: ${this.state}`);
   }
   // Mulberry32 - fast, high quality PRNG
   next() {
+    const oldState = this.state;
     let t = this.state += 1831565813;
     t = Math.imul(t ^ t >>> 15, t | 1);
     t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    const result = ((t ^ t >>> 14) >>> 0) / 4294967296;
+    console.log(`🎲 next() called: oldState=${oldState}, newState=${this.state}, t=${t}, result=${result}`);
+    return result;
   }
   // Random float between min and max
   range(min, max) {
     return min + this.next() * (max - min);
   }
-  // Random integer between min (inclusive) and max (exclusive)
+  // Random integer between min (inclusive) and max (inclusive)
   int(min, max) {
-    return Math.floor(this.range(min, max));
+    const nextVal = this.next();
+    const range = max - min + 1;
+    const result = Math.floor(min + nextVal * range);
+    console.log(`🎲 int(${min}, ${max}): next()=${nextVal.toFixed(6)}, range=${range}, result=${result}`);
+    return result;
   }
   // Random boolean
   bool(probability = 0.5) {
@@ -5443,12 +5546,12 @@ class SeededRandom {
   }
   // Random element from array
   choice(array) {
-    return array[this.int(0, array.length)];
+    return array[this.int(0, array.length - 1)];
   }
   // Shuffle array in place
   shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
-      const j = this.int(0, i + 1);
+      const j = this.int(0, i);
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
@@ -5533,8 +5636,8 @@ RESPOND AS ${npc.identity.name.toUpperCase()}:
   const constraints = `
 CRITICAL SPEECH RULES:
 - Talk like you're having a real conversation, not writing a novel
-- BANNED PHRASES: "heh", dramatic ellipses "...", cryptic warnings, mystical nonsense
-- NO excessive punctuation or dramatic pauses
+- BANNED PHRASES: "heh", mystical nonsense, overly dramatic narration
+- NO excessive punctuation (more than 3 dots in a row)
 - NO references to tattoos, scars, or appearance unless directly asked
 - NO unsolicited life lessons or philosophical musings
 - Just answer the question like a human being would
@@ -5588,6 +5691,16 @@ class NPCManager {
     this.maxNPCs = 50;
     this.spawnChance = 0.1;
     this.activeConversation = null;
+    this.backgroundGeneration = {
+      enabled: false,
+      paused: false,
+      batchSize: 3,
+      currentBatch: 0,
+      totalGenerated: 0,
+      queue: [],
+      // NPCs waiting for AI enrichment
+      processing: false
+    };
     console.log("✅ NPCManager initialized");
   }
   /**
@@ -5602,14 +5715,25 @@ class NPCManager {
    * @returns {NPC} Fully generated NPC instance (ready to play without AI)
    */
   generateNPC(template) {
+    console.log("🎲 [generateNPC 1/10] Starting with template:", template);
     const { faction, gender, age, role, tile } = template;
     const factionType = faction || "castaway";
-    const npcGender = gender || (this.seededRandom.random() > 0.5 ? "female" : "male");
+    const npcGender = gender || (this.seededRandom.next() > 0.5 ? "female" : "male");
+    console.log(`🎲 [generateNPC 2/10] Faction: ${factionType}, Gender: ${npcGender}`);
+    console.log("🎲 [generateNPC 3/10] Generating name...");
     const nameData = this.nameDB.generateName(factionType, npcGender, this.seededRandom);
+    console.log(`🎲 [generateNPC 4/10] Name generated: ${nameData.fullName}`);
+    console.log("🎲 [generateNPC 5/10] Generating appearance...");
     const appearance = this.appearanceDB.generateAppearance(factionType, npcGender, this.seededRandom);
+    console.log("🎲 [generateNPC 6/10] Appearance generated");
+    console.log("🎲 [generateNPC 7/10] Generating personality...");
     const personality = this.personalityDB.generatePersonality(factionType, this.seededRandom);
+    console.log("🎲 [generateNPC 8/10] Personality generated");
     const npcRole = role || this.getDefaultRole(factionType);
+    console.log(`🎲 [generateNPC 9/10] Generating background (role: ${npcRole})...`);
     const background = this.backgroundDB.generateBackground(factionType, npcRole, this.seededRandom);
+    console.log("🎲 [generateNPC 9b/10] Background generated");
+    console.log("🎲 [generateNPC 9c/10] Creating NPC instance...");
     const npc = new NPC({
       id: nameData.fullName.replace(/\s+/g, "_").toLowerCase() + "_" + Date.now(),
       identity: {
@@ -5632,8 +5756,9 @@ class NPCManager {
         homeLocation: tile || { q: 0, r: 0 }
       }
     });
+    console.log("🎲 [generateNPC 9d/10] NPC instance created");
     npc.meta.generatedByAI = false;
-    console.log(`✨ Generated ${npc.identity.name} (${npc.identity.faction} ${npc.identity.role})`);
+    console.log(`🎲 [generateNPC 10/10] ✅ Generated ${npc.identity.name} (${npc.identity.faction} ${npc.identity.role})`);
     return npc;
   }
   /**
@@ -5661,7 +5786,7 @@ class NPCManager {
       tourist: ["vacationer", "backpacker", "photographer", "writer"]
     };
     const options = roles[faction] || ["wanderer"];
-    return options[Math.floor(Math.random() * options.length)];
+    return this.seededRandom.choice(options);
   }
   /**
    * Enrich NPC with AI-generated creative content (OPTIONAL)
@@ -5724,24 +5849,35 @@ Return ONLY valid JSON:
    * @returns {Promise<NPC>} Spawned NPC
    */
   async spawnNPC(template, enrichWithAI = true) {
+    console.log("🔧 [spawnNPC 1/8] Called with template:", template);
     if (this.npcs.size >= this.maxNPCs) {
       console.warn("⚠️ Max NPCs reached, cannot spawn more");
       return null;
     }
+    console.log(`🔧 [spawnNPC 2/8] NPC cap check passed (${this.npcs.size}/${this.maxNPCs})`);
+    console.log("🔧 [spawnNPC 3/8] Calling generateNPC...");
     const npc = this.generateNPC(template);
+    console.log("🔧 [spawnNPC 4/8] generateNPC returned:", npc?.identity?.name || "UNDEFINED");
     if (enrichWithAI) {
+      console.log("🔧 [spawnNPC 5/8] Enriching with AI (awaiting)...");
       await this.enrichWithAI(npc);
+      console.log("🔧 [spawnNPC 5b/8] AI enrichment complete");
+    } else {
+      console.log("🔧 [spawnNPC 5/8] Skipping AI enrichment (enrichWithAI=false)");
     }
+    console.log("🔧 [spawnNPC 6/8] Adding to storage...");
     this.npcs.set(npc.identity.id, npc);
     const tileKey = `${npc.location.currentTile.q},${npc.location.currentTile.r}`;
     if (!this.npcsByTile.has(tileKey)) {
       this.npcsByTile.set(tileKey, /* @__PURE__ */ new Set());
     }
     this.npcsByTile.get(tileKey).add(npc.identity.id);
+    console.log("🔧 [spawnNPC 7/8] Added to tile index");
     if (!this.npcsByFaction.has(npc.identity.faction)) {
       this.npcsByFaction.set(npc.identity.faction, /* @__PURE__ */ new Set());
     }
     this.npcsByFaction.get(npc.identity.faction).add(npc.identity.id);
+    console.log("🔧 [spawnNPC 8/8] Added to faction index");
     console.log(`✅ Spawned ${npc.identity.name} (${npc.identity.faction}) at ${tileKey}`);
     return npc;
   }
@@ -5797,6 +5933,7 @@ Return ONLY valid JSON:
         npcId,
         history: []
       };
+      this.pauseBackgroundGeneration();
     }
     const prompt = buildDialoguePrompt(
       npc,
@@ -5850,6 +5987,168 @@ NOTE: Your previous response was too similar to recent messages. ${variation}.`;
    */
   endConversation() {
     this.activeConversation = null;
+    this.resumeBackgroundGeneration();
+  }
+  /**
+   * Start background NPC generation
+   * Generates NPCs in batches during idle time
+   */
+  startBackgroundGeneration() {
+    console.log("🔄 Starting background NPC generation...");
+    this.backgroundGeneration.enabled = true;
+    this.backgroundGeneration.paused = false;
+    this.processNextBatch();
+  }
+  /**
+   * Stop background NPC generation
+   */
+  stopBackgroundGeneration() {
+    console.log("⏸️ Stopping background NPC generation");
+    this.backgroundGeneration.enabled = false;
+  }
+  /**
+   * Pause background generation (e.g., during conversation)
+   */
+  pauseBackgroundGeneration() {
+    if (this.backgroundGeneration.enabled && !this.backgroundGeneration.paused) {
+      console.log("⏸️ Pausing background NPC generation (conversation started)");
+      this.backgroundGeneration.paused = true;
+    }
+  }
+  /**
+   * Resume background generation (e.g., after conversation)
+   */
+  resumeBackgroundGeneration() {
+    if (this.backgroundGeneration.enabled && this.backgroundGeneration.paused) {
+      console.log("▶️ Resuming background NPC generation (conversation ended)");
+      this.backgroundGeneration.paused = false;
+      if (this.backgroundGeneration.queue.length > 0 && !this.backgroundGeneration.processing) {
+        this.processNextBatch();
+      }
+    }
+  }
+  /**
+   * Process next batch of background NPC generation
+   * This is now fully sequential: generate batch -> enrich ALL with AI -> next batch
+   */
+  async processNextBatch() {
+    if (!this.backgroundGeneration.enabled || this.backgroundGeneration.paused) {
+      return;
+    }
+    if (this.backgroundGeneration.processing) {
+      return;
+    }
+    if (this.npcs.size >= this.maxNPCs) {
+      console.log("🛑 NPC cap reached, stopping background generation");
+      this.stopBackgroundGeneration();
+      return;
+    }
+    this.backgroundGeneration.processing = true;
+    this.backgroundGeneration.currentBatch++;
+    const batchNum = this.backgroundGeneration.currentBatch;
+    const batchSize = Math.min(
+      this.backgroundGeneration.batchSize,
+      this.maxNPCs - this.npcs.size
+    );
+    console.log(`🔄 [Batch ${batchNum}] Generating ${batchSize} NPCs in background...`);
+    try {
+      const generatedNPCs = [];
+      for (let i = 0; i < batchSize; i++) {
+        if (!this.backgroundGeneration.enabled || this.backgroundGeneration.paused) {
+          console.log(`⏸️ [Batch ${batchNum}] Generation paused at NPC ${i + 1}/${batchSize}`);
+          break;
+        }
+        const faction = this.selectRandomFaction();
+        const gender = this.seededRandom.next() > 0.5 ? "female" : "male";
+        const npc = this.generateNPC({ faction, gender });
+        console.log(`🔄 [Batch ${batchNum}] Generated ${i + 1}/${batchSize}: ${npc.identity.name} (${faction})`);
+        generatedNPCs.push(npc);
+        this.backgroundGeneration.totalGenerated++;
+      }
+      if (generatedNPCs.length > 0) {
+        console.log(`✅ [Batch ${batchNum}] Generated ${generatedNPCs.length} NPCs (Total: ${this.backgroundGeneration.totalGenerated})`);
+        console.log(`🤖 [Batch ${batchNum}] Starting AI enrichment for ${generatedNPCs.length} NPCs...`);
+        await this.enrichBatchWithAI(generatedNPCs, batchNum);
+        console.log(`✅ [Batch ${batchNum}] All NPCs enriched and ready!`);
+      }
+    } catch (error) {
+      console.error(`❌ [Batch ${batchNum}] Error during background generation:`, error);
+    } finally {
+      this.backgroundGeneration.processing = false;
+      if (this.backgroundGeneration.enabled && !this.backgroundGeneration.paused && this.npcs.size < this.maxNPCs) {
+        console.log(`⏱️ [Batch ${batchNum}] Waiting before next batch...`);
+        setTimeout(() => this.processNextBatch(), 2e3);
+      }
+    }
+  }
+  /**
+   * Enrich an entire batch of NPCs with AI backstories
+   * Processes sequentially to respect rate limits
+   */
+  async enrichBatchWithAI(npcs, batchNum) {
+    for (let i = 0; i < npcs.length; i++) {
+      if (this.backgroundGeneration.paused) {
+        console.log(`⏸️ [Batch ${batchNum}] AI enrichment paused (conversation active)`);
+        this.backgroundGeneration.queue.push(...npcs.slice(i));
+        return;
+      }
+      const npc = npcs[i];
+      try {
+        console.log(`🤖 [Batch ${batchNum}] Enriching ${npc.identity.name} (${i + 1}/${npcs.length})...`);
+        await this.enrichWithAI(npc);
+        console.log(`✨ [Batch ${batchNum}] ${npc.identity.name} enriched successfully`);
+        if (i < npcs.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2e3));
+        }
+      } catch (error) {
+        console.error(`❌ [Batch ${batchNum}] Failed to enrich ${npc.identity.name}:`, error);
+      }
+    }
+  }
+  /**
+   * Resume enriching any NPCs left in the queue (after pause)
+   */
+  async enrichQueuedNPCs() {
+    if (this.backgroundGeneration.queue.length === 0) {
+      return;
+    }
+    console.log(`🔄 Resuming AI enrichment for ${this.backgroundGeneration.queue.length} queued NPCs...`);
+    while (this.backgroundGeneration.queue.length > 0 && this.backgroundGeneration.enabled) {
+      if (this.backgroundGeneration.paused) {
+        console.log("⏸️ Pausing AI enrichment (conversation active)");
+        return;
+      }
+      const npc = this.backgroundGeneration.queue.shift();
+      try {
+        console.log(`🤖 Enriching ${npc.identity.name} with AI backstory...`);
+        await this.enrichWithAI(npc);
+        console.log(`✨ ${npc.identity.name} enriched successfully`);
+        await new Promise((resolve) => setTimeout(resolve, 2e3));
+      } catch (error) {
+        console.error(`❌ Failed to enrich ${npc.identity.name}:`, error);
+      }
+    }
+    console.log("✅ All queued NPCs enriched");
+  }
+  /**
+   * Select a random faction weighted by territory count
+   */
+  selectRandomFaction() {
+    const factionWeights = {
+      "castaway": 1,
+      "natives_clan1": 3,
+      "natives_clan2": 3,
+      "mercenaries": 2
+    };
+    const totalWeight = Object.values(factionWeights).reduce((sum, w) => sum + w, 0);
+    let random = this.seededRandom.next() * totalWeight;
+    for (const [faction, weight] of Object.entries(factionWeights)) {
+      random -= weight;
+      if (random <= 0) {
+        return faction;
+      }
+    }
+    return "castaway";
   }
   /**
    * Update NPC schedules and positions based on time
@@ -9935,11 +10234,169 @@ class StoryIntro {
     document.addEventListener("keydown", this.keyHandler);
   }
 }
+class TerrainTextureGenerator {
+  constructor() {
+    this.noiseCache = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Generate noise value for a specific position
+   * Uses simple pseudo-random based on coordinates
+   */
+  noise(x, y, seed = 0) {
+    const key = `${x},${y},${seed}`;
+    if (this.noiseCache.has(key)) {
+      return this.noiseCache.get(key);
+    }
+    let n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43758.5453) * 43758.5453;
+    n = n - Math.floor(n);
+    this.noiseCache.set(key, n);
+    return n;
+  }
+  /**
+   * Get texture pattern for terrain type at specific hex coordinates
+   * Returns { color, alpha } for overlay on base terrain
+   */
+  getTexturePattern(terrain, q, r, scale = 1) {
+    const patterns = [];
+    switch (terrain) {
+      case "forest":
+      case "rainforest":
+        for (let i = 0; i < 8; i++) {
+          const noise = this.noise(q, r, i * 10);
+          if (noise > 0.7) {
+            patterns.push({
+              x: (noise * 30 - 15) / scale,
+              y: (this.noise(q, r, i * 10 + 1) * 30 - 15) / scale,
+              size: 2 + this.noise(q, r, i * 10 + 2) * 3,
+              color: terrain === "rainforest" ? "#0f3d0f" : "#1a5c1a",
+              alpha: 0.4
+            });
+          }
+        }
+        break;
+      case "jungle-hill":
+        for (let i = 0; i < 12; i++) {
+          const noise = this.noise(q, r, i * 7);
+          if (noise > 0.6) {
+            patterns.push({
+              x: (noise * 35 - 17.5) / scale,
+              y: (this.noise(q, r, i * 7 + 1) * 35 - 17.5) / scale,
+              size: 1.5 + this.noise(q, r, i * 7 + 2) * 2.5,
+              color: "#2d5016",
+              alpha: 0.5
+            });
+          }
+        }
+        break;
+      case "beach":
+        for (let i = 0; i < 15; i++) {
+          const noise = this.noise(q, r, i * 5);
+          if (noise > 0.5) {
+            patterns.push({
+              x: (noise * 40 - 20) / scale,
+              y: (this.noise(q, r, i * 5 + 1) * 40 - 20) / scale,
+              size: 0.8 + this.noise(q, r, i * 5 + 2) * 1.2,
+              color: "#ffffff",
+              alpha: 0.15
+            });
+          }
+        }
+        break;
+      case "rocky-peak":
+      case "misty-peak":
+        for (let i = 0; i < 10; i++) {
+          const noise = this.noise(q, r, i * 8);
+          if (noise > 0.65) {
+            patterns.push({
+              x: (noise * 30 - 15) / scale,
+              y: (this.noise(q, r, i * 8 + 1) * 30 - 15) / scale,
+              size: 2 + this.noise(q, r, i * 8 + 2) * 4,
+              color: "#3d3d3d",
+              alpha: 0.3,
+              angular: true
+            });
+          }
+        }
+        break;
+      case "savanna":
+      case "dry-hill":
+        for (let i = 0; i < 12; i++) {
+          const noise = this.noise(q, r, i * 6);
+          if (noise > 0.6) {
+            patterns.push({
+              x: (noise * 35 - 17.5) / scale,
+              y: (this.noise(q, r, i * 6 + 1) * 35 - 17.5) / scale,
+              size: 1 + this.noise(q, r, i * 6 + 2) * 2,
+              color: "#a67c52",
+              alpha: 0.25
+            });
+          }
+        }
+        break;
+      case "mangrove":
+        for (let i = 0; i < 8; i++) {
+          const noise = this.noise(q, r, i * 9);
+          if (noise > 0.68) {
+            patterns.push({
+              x: (noise * 32 - 16) / scale,
+              y: (this.noise(q, r, i * 9 + 1) * 32 - 16) / scale,
+              size: 2.5 + this.noise(q, r, i * 9 + 2) * 3,
+              color: "#0a1f0a",
+              alpha: 0.5
+            });
+          }
+        }
+        break;
+      case "palm-grove":
+        for (let i = 0; i < 6; i++) {
+          const noise = this.noise(q, r, i * 11);
+          if (noise > 0.72) {
+            patterns.push({
+              x: (noise * 28 - 14) / scale,
+              y: (this.noise(q, r, i * 11 + 1) * 28 - 14) / scale,
+              size: 2.5 + this.noise(q, r, i * 11 + 2) * 2,
+              color: "#6ee700",
+              alpha: 0.4
+            });
+          }
+        }
+        break;
+    }
+    return patterns;
+  }
+  /**
+   * Calculate hillshading value based on elevation and neighboring tiles
+   * Simulates light from NW direction
+   */
+  calculateHillshade(elevation, qOffset = 0, rOffset = 0, neighborElevation = null) {
+    if (!neighborElevation) return 0;
+    const slope = elevation - neighborElevation;
+    const lightAngle = qOffset + rOffset;
+    return slope * lightAngle * 0.15;
+  }
+  /**
+   * Get elevation-based color gradient
+   * Returns brightness multiplier (0.6 - 1.4)
+   */
+  getElevationBrightness(elevation, minElev = 0, maxElev = 1) {
+    if (elevation === void 0 || elevation === null || isNaN(elevation)) {
+      return 1;
+    }
+    if (minElev === maxElev) {
+      return 1;
+    }
+    const normalized = (elevation - minElev) / (maxElev - minElev);
+    const clamped = Math.max(0, Math.min(1, normalized));
+    const brightness = 0.6 + Math.pow(clamped, 0.8) * 0.8;
+    return brightness;
+  }
+}
 class MapRenderer {
   constructor(canvas, hexGrid) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.hexGrid = hexGrid;
+    this.textureGenerator = new TerrainTextureGenerator();
     this.offsetX = 0;
     this.offsetY = 0;
     this.scale = 1;
@@ -9949,7 +10406,7 @@ class MapRenderer {
       "sea": "#1e3a8a",
       // Deep blue
       "beach": "#f4e4c1",
-      // Softer sand/beige
+      // Sandy beige
       "cliff": "#57534e",
       // Warm grey
       "river": "#3b82f6",
@@ -9957,10 +10414,10 @@ class MapRenderer {
       // LOWLANDS
       "savanna": "#d4b896",
       // Golden tan
-      "forest": "#22c55e",
-      // Green
-      "rainforest": "#15803d",
-      // Dark green
+      "forest": "#2d5016",
+      // Rich forest green
+      "rainforest": "#1a3a1a",
+      // Deep jungle green
       "mangrove": "#166534",
       // Dark swampy green
       "palm-grove": "#84cc16",
@@ -9968,19 +10425,19 @@ class MapRenderer {
       // HILLS
       "dry-hill": "#a8a29e",
       // Tan/grey
-      "jungle-hill": "#65a30d",
-      // Olive green
-      "cloud-forest": "#6ee7b7",
-      // Mint/teal
+      "jungle-hill": "#3d5a2c",
+      // Olive green (darker than before)
+      "cloud-forest": "#5f9ea0",
+      // Cadet blue/teal
       "bamboo-forest": "#86efac",
       // Light fresh green
-      "scrubland": "#d6d3d1",
-      // Dusty grey-brown
+      "scrubland": "#c2b280",
+      // Dusty sage
       // MOUNTAINS
-      "rocky-peak": "#78716c",
-      // Dark grey
-      "misty-peak": "#e2e8f0"
-      // Lighter grey/white
+      "rocky-peak": "#696969",
+      // Dim grey
+      "misty-peak": "#d3d3d3"
+      // Light grey
     };
     this.setupCanvas();
   }
@@ -9993,8 +10450,9 @@ class MapRenderer {
   // ========================================
   // MAIN RENDER
   // ========================================
-  render(tiles, territoryManager2 = null) {
+  render(tiles, territoryManager2 = null, playerPosition = null) {
     this.territoryManager = territoryManager2;
+    this.playerPosition = playerPosition;
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = "#0f172a";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -10004,7 +10462,11 @@ class MapRenderer {
     for (const [key, tile] of tiles) {
       this.renderHex(tile);
     }
+    if (playerPosition) {
+      this.highlightPlayerTile(playerPosition);
+    }
     this.ctx.restore();
+    this.addFilmGrain();
   }
   // ========================================
   // HEX RENDERING
@@ -10019,35 +10481,47 @@ class MapRenderer {
     }
     this.ctx.closePath();
     const baseColor = this.terrainColors[tile.terrain] || "#666666";
-    const brightness = tile.isLand ? 1 + (tile.elevation - 0.5) * 0.4 : 1;
+    let brightness = 1;
+    if (tile.isLand && tile.elevation !== void 0 && !isNaN(tile.elevation)) {
+      brightness = this.textureGenerator.getElevationBrightness(tile.elevation, 0, 1);
+      if (isNaN(brightness) || brightness < 0.5 || brightness > 1.5) {
+        brightness = 1;
+      }
+    }
     this.ctx.fillStyle = this.adjustBrightness(baseColor, brightness);
     this.ctx.fill();
+    if (this.scale > 0.5) {
+      this.renderTerrainTexture(tile, corners);
+    }
     if (territory?.discovered && territory.owner && territory.owner !== "neutral") {
       const territoryColors = {
-        "player": "rgba(251, 191, 36, 0.15)",
-        // Yellow
-        "castaways": "rgba(251, 191, 36, 0.15)",
-        // Yellow
-        "natives_clan1": "rgba(59, 130, 246, 0.15)",
-        // Blue
-        "natives_clan2": "rgba(132, 204, 22, 0.15)",
-        // Green
-        "mercenaries": "rgba(220, 38, 38, 0.15)"
-        // Red
+        "player": "rgba(251, 191, 36, ALPHA)",
+        // Warm yellow
+        "castaways": "rgba(251, 191, 36, ALPHA)",
+        // Warm yellow
+        "natives_clan1": "rgba(34, 139, 34, ALPHA)",
+        // Forest green
+        "natives_clan2": "rgba(32, 178, 170, ALPHA)",
+        // Light sea green  
+        "mercenaries": "rgba(70, 130, 180, ALPHA)"
+        // Steel blue
       };
-      let alpha = this.scale < 0.4 ? 0.35 : 0.15;
-      const baseColorValue = territoryColors[territory.owner];
-      if (baseColorValue) {
-        const colorWithAlpha = baseColorValue.replace(/[\d.]+\)$/, `${alpha})`);
-        this.ctx.fillStyle = colorWithAlpha;
+      let alpha = this.scale < 0.4 ? 0.35 : 0.25;
+      const colorTemplate = territoryColors[territory.owner];
+      if (colorTemplate) {
+        this.ctx.fillStyle = colorTemplate.replace("ALPHA", alpha.toString());
         this.ctx.fill();
       }
     }
-    this.ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
-    this.ctx.lineWidth = 1;
+    if (territory && !territory.visited) {
+      this.ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      this.ctx.fill();
+    }
+    this.ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+    this.ctx.lineWidth = 0.5;
     this.ctx.stroke();
-    if (territory?.discovered && territory.isPerimeter && territory.owner && territory.owner !== "neutral") {
-      this.renderTerritoryBorders(tile, corners, territory);
+    if (territory?.discovered && territory.owner && territory.owner !== "neutral") {
+      this.renderEnhancedTerritoryBorders(tile, corners, territory);
     }
     if (tile.isStrategic) {
       this.renderStrategicMarker(tile);
@@ -10065,39 +10539,111 @@ class MapRenderer {
     }
   }
   /**
-   * Render territory borders between different factions
-   * Only renders borders for perimeter tiles
+   * Render procedural terrain textures
    */
-  renderTerritoryBorders(tile, corners, territory) {
-    const borderColors = {
-      "player": "#fbbf24",
-      // Yellow
-      "castaways": "#fbbf24",
-      // Yellow
-      "natives_clan1": "#3b82f6",
-      // Blue
-      "natives_clan2": "#84cc16",
-      // Green
-      "mercenaries": "#dc2626"
-      // Red
-    };
-    const borderColor = borderColors[territory.owner] || "#666";
-    this.ctx.strokeStyle = borderColor;
-    this.ctx.lineWidth = 3;
-    this.ctx.lineCap = "round";
-    const adjacent = this.territoryManager.getAdjacentTerritories(tile.q, tile.r);
-    for (let i = 0; i < 6; i++) {
-      const neighborTerr = adjacent[i];
-      if (!neighborTerr) continue;
-      if (neighborTerr.owner !== territory.owner) {
-        const startCorner = corners[i];
-        const endCorner = corners[(i + 1) % 6];
+  renderTerrainTexture(tile, corners) {
+    const patterns = this.textureGenerator.getTexturePattern(tile.terrain, tile.q, tile.r, this.scale);
+    const center = this.hexGrid.axialToPixel(tile.q, tile.r);
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < corners.length; i++) {
+      this.ctx.lineTo(corners[i].x, corners[i].y);
+    }
+    this.ctx.closePath();
+    this.ctx.clip();
+    for (const pattern of patterns) {
+      this.ctx.globalAlpha = pattern.alpha;
+      this.ctx.fillStyle = pattern.color;
+      if (pattern.angular) {
+        this.ctx.fillRect(
+          center.x + pattern.x - pattern.size / 2,
+          center.y + pattern.y - pattern.size / 2,
+          pattern.size,
+          pattern.size
+        );
+      } else {
         this.ctx.beginPath();
-        this.ctx.moveTo(startCorner.x, startCorner.y);
-        this.ctx.lineTo(endCorner.x, endCorner.y);
-        this.ctx.stroke();
+        this.ctx.arc(center.x + pattern.x, center.y + pattern.y, pattern.size, 0, Math.PI * 2);
+        this.ctx.fill();
       }
     }
+    this.ctx.globalAlpha = 1;
+    this.ctx.restore();
+  }
+  /**
+   * Render enhanced territory borders between different factions
+   * FIXED: Properly detects all borders, not just perimeter tiles
+   */
+  renderEnhancedTerritoryBorders(tile, corners, territory) {
+    const borderColors = {
+      "player": "#fbbf24",
+      // Warm yellow
+      "castaways": "#fbbf24",
+      // Warm yellow  
+      "natives_clan1": "#228B22",
+      // Forest green
+      "natives_clan2": "#20B2AA",
+      // Light sea green
+      "mercenaries": "#4682B4"
+      // Steel blue
+    };
+    const borderColor = borderColors[territory.owner] || "#666";
+    const directions = [
+      { q: 1, r: 0 },
+      // E
+      { q: 1, r: -1 },
+      // NE
+      { q: 0, r: -1 },
+      // NW
+      { q: -1, r: 0 },
+      // W
+      { q: -1, r: 1 },
+      // SW
+      { q: 0, r: 1 }
+      // SE
+    ];
+    for (let i = 0; i < 6; i++) {
+      const dir = directions[i];
+      const neighborQ = tile.q + dir.q;
+      const neighborR = tile.r + dir.r;
+      const neighborTerr = this.territoryManager?.getTerritory(neighborQ, neighborR);
+      const shouldDrawBorder = !neighborTerr || neighborTerr.owner !== territory.owner || neighborTerr.owner === "neutral";
+      if (shouldDrawBorder) {
+        const strength = (territory.controlStrength || 50) / 100;
+        const lineWidth = 2 + strength * 2;
+        this.ctx.strokeStyle = borderColor;
+        this.ctx.lineWidth = lineWidth;
+        this.ctx.lineCap = "round";
+        this.ctx.lineJoin = "round";
+        const startCorner = corners[i];
+        const endCorner = corners[(i + 1) % 6];
+        const center = this.hexGrid.axialToPixel(tile.q, tile.r);
+        const inset = 0.1;
+        const startX = startCorner.x + (center.x - startCorner.x) * inset;
+        const startY = startCorner.y + (center.y - startCorner.y) * inset;
+        const endX = endCorner.x + (center.x - endCorner.x) * inset;
+        const endY = endCorner.y + (center.y - endCorner.y) * inset;
+        this.ctx.beginPath();
+        this.ctx.moveTo(startX, startY);
+        this.ctx.lineTo(endX, endY);
+        this.ctx.stroke();
+        if (this.scale > 0.6) {
+          this.ctx.strokeStyle = borderColor + "40";
+          this.ctx.lineWidth = lineWidth + 2;
+          this.ctx.beginPath();
+          this.ctx.moveTo(startX, startY);
+          this.ctx.lineTo(endX, endY);
+          this.ctx.stroke();
+        }
+      }
+    }
+  }
+  /**
+   * OLD method - kept for backward compatibility but not used
+   */
+  renderTerritoryBorders(tile, corners, territory) {
+    this.renderEnhancedTerritoryBorders(tile, corners, territory);
   }
   // Helper method to get tile (needs to be added)
   getTile(q, r) {
@@ -10283,13 +10829,55 @@ class MapRenderer {
   // ========================================
   // UTILITIES
   // ========================================
+  /**
+   * Highlight the player's current tile with pulsing glow
+   */
+  highlightPlayerTile(position) {
+    const corners = this.hexGrid.getHexCorners(position.q, position.r);
+    const pulseSpeed = 2e3;
+    const pulse = (Math.sin(Date.now() / pulseSpeed * Math.PI * 2) + 1) / 2;
+    const alpha = 0.2 + pulse * 0.3;
+    this.ctx.beginPath();
+    this.ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < corners.length; i++) {
+      this.ctx.lineTo(corners[i].x, corners[i].y);
+    }
+    this.ctx.closePath();
+    this.ctx.strokeStyle = `rgba(251, 191, 36, ${alpha})`;
+    this.ctx.lineWidth = 4;
+    this.ctx.stroke();
+    this.ctx.strokeStyle = `rgba(251, 191, 36, ${alpha * 0.5})`;
+    this.ctx.lineWidth = 8;
+    this.ctx.stroke();
+  }
+  /**
+   * Add subtle film grain overlay for organic feel
+   */
+  addFilmGrain() {
+    if (this.scale < 0.5) return;
+    const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+    const pixels = imageData.data;
+    for (let i = 0; i < pixels.length; i += 40) {
+      const noise = (Math.random() - 0.5) * 8;
+      pixels[i] = Math.max(0, Math.min(255, pixels[i] + noise));
+      pixels[i + 1] = Math.max(0, Math.min(255, pixels[i + 1] + noise));
+      pixels[i + 2] = Math.max(0, Math.min(255, pixels[i + 2] + noise));
+    }
+    this.ctx.putImageData(imageData, 0, 0);
+  }
   adjustBrightness(color, factor) {
+    if (!color || typeof color !== "string") return "#666666";
+    if (isNaN(factor) || factor === void 0) factor = 1;
     const r = parseInt(color.slice(1, 3), 16);
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
-    const nr = Math.min(255, Math.floor(r * factor));
-    const ng = Math.min(255, Math.floor(g * factor));
-    const nb = Math.min(255, Math.floor(b * factor));
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+      console.warn("Invalid color:", color);
+      return "#666666";
+    }
+    const nr = Math.min(255, Math.max(0, Math.floor(r * factor)));
+    const ng = Math.min(255, Math.max(0, Math.floor(g * factor)));
+    const nb = Math.min(255, Math.max(0, Math.floor(b * factor)));
     return `rgb(${nr}, ${ng}, ${nb})`;
   }
   // Convert screen coordinates to hex coordinates
@@ -10479,7 +11067,7 @@ class GameView {
     const canvas = document.getElementById("game-canvas");
     if (!canvas || !this.mapData) return;
     this.renderer = new MapRenderer(canvas, this.mapData.hexGrid);
-    this.renderer.render(this.mapData.tiles, this.territoryManager);
+    this.renderer.render(this.mapData.tiles, this.territoryManager, this.player.position);
     this.updateFogButton();
     console.log(`🏖️ Player at (${this.player.position.q}, ${this.player.position.r})`);
     this.renderPlayerMarker();
@@ -10488,7 +11076,7 @@ class GameView {
   }
   renderPlayerMarker() {
     if (!this.renderer) return;
-    this.renderer.render(this.mapData.tiles, this.territoryManager);
+    this.renderer.render(this.mapData.tiles, this.territoryManager, this.player.position);
     if (window.game.mapTravelUI) {
       window.game.mapTravelUI.render();
     }
@@ -10563,15 +11151,27 @@ class GameView {
     let isDragging = false;
     let lastX = 0;
     let lastY = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    const DRAG_THRESHOLD = 5;
     canvas.addEventListener("mousedown", (e) => {
       isDragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      console.log("🖱️ MOUSEDOWN at", dragStartX, dragStartY);
     });
     canvas.addEventListener("mousemove", (e) => {
       if (isDragging) {
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
+        const currentDragDistance = Math.sqrt(
+          Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2)
+        );
+        if (currentDragDistance > DRAG_THRESHOLD && currentDragDistance < DRAG_THRESHOLD + 10) {
+          console.log("🖱️ DRAGGING - distance:", currentDragDistance.toFixed(1), "px (threshold:", DRAG_THRESHOLD, ")");
+        }
         this.renderer.pan(dx, dy);
         this.renderPlayerMarker();
         lastX = e.clientX;
@@ -10581,8 +11181,16 @@ class GameView {
       }
     });
     canvas.addEventListener("mouseup", (e) => {
-      if (!isDragging) {
+      const totalDragDistance = Math.sqrt(
+        Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2)
+      );
+      console.log("🖱️ MOUSEUP at", e.clientX, e.clientY);
+      console.log("🖱️ Total drag distance:", totalDragDistance.toFixed(1), "px (threshold:", DRAG_THRESHOLD, ")");
+      if (isDragging && totalDragDistance < DRAG_THRESHOLD) {
+        console.log("✅ CLICK detected - handling tile click");
         this.handleTileClick(e);
+      } else {
+        console.log("❌ DRAG detected - ignoring click (distance too large)");
       }
       isDragging = false;
     });
@@ -12057,10 +12665,11 @@ class SimplexNoise {
   }
 }
 class MapEngine {
-  constructor(seed = Date.now()) {
-    this.seed = seed;
-    this.rng = new SeededRandom(seed);
-    this.hexGrid = new HexGrid(20);
+  constructor(hexGrid, noise, rng) {
+    this.hexGrid = hexGrid;
+    this.noise = noise;
+    this.rng = rng;
+    this.seed = rng.seed;
     this.tiles = /* @__PURE__ */ new Map();
     this.config = {
       radius: 20,
@@ -14040,9 +14649,13 @@ class TravelSystem {
     };
     const terrainMult = terrainMultipliers[toTerritory.terrain] || 1.2;
     baseDuration *= terrainMult;
-    if (fromTerritory) {
+    if (fromTerritory && toTerritory.elevation !== void 0 && fromTerritory.elevation !== void 0 && !isNaN(toTerritory.elevation) && !isNaN(fromTerritory.elevation)) {
       const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
       baseDuration *= 1 + elevationChange * 0.2;
+    }
+    if (isNaN(baseDuration)) {
+      console.warn("NaN travel duration calculated for", toPos, "terrain:", toTerritory.terrain);
+      return 10;
     }
     return Math.max(5, Math.ceil(baseDuration));
   }
@@ -16319,17 +16932,46 @@ class MapTravelUI {
       console.error("Canvas not found for event listeners");
       return;
     }
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    const DRAG_THRESHOLD = 5;
+    canvas.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      console.log("🗺️ MapTravelUI MOUSEDOWN at", dragStartX, dragStartY);
+    });
     canvas.addEventListener("mousemove", (e) => {
+      if (isDragging) {
+        const dragDistance = Math.sqrt(
+          Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2)
+        );
+        if (dragDistance > DRAG_THRESHOLD) {
+          console.log("🗺️ MapTravelUI detected drag");
+        }
+      }
       const renderer = window.game.gameView?.renderer;
       if (!renderer) return;
       const hex = renderer.screenToHex(e.clientX, e.clientY);
       this.onHexHover(hex);
     });
-    canvas.addEventListener("click", (e) => {
-      const renderer = window.game.gameView?.renderer;
-      if (!renderer) return;
-      const hex = renderer.screenToHex(e.clientX, e.clientY);
-      this.onHexClick(hex);
+    canvas.addEventListener("mouseup", (e) => {
+      const dragDistance = Math.sqrt(
+        Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2)
+      );
+      console.log("🗺️ MapTravelUI MOUSEUP - drag distance:", dragDistance.toFixed(1));
+      if (isDragging && dragDistance < DRAG_THRESHOLD) {
+        console.log("🗺️ MapTravelUI: CLICK detected (< threshold)");
+        const renderer = window.game.gameView?.renderer;
+        if (renderer) {
+          const hex = renderer.screenToHex(e.clientX, e.clientY);
+          this.onHexClick(hex);
+        }
+      } else {
+        console.log("🗺️ MapTravelUI: DRAG detected - ignoring click");
+      }
+      isDragging = false;
     });
     canvas.addEventListener("mouseleave", () => {
       this.onHexHover(null);
@@ -16393,8 +17035,9 @@ class MapTravelUI {
     const travelInfo = this.travelSystem.getTravelInfo(hex.q, hex.r);
     if (travelInfo) {
       if (travelInfo.canTravel) {
+        const duration = isNaN(travelInfo.duration) ? "?" : travelInfo.duration;
         content += `<div class="tooltip-travel">
-          ⏱️ ${travelInfo.duration} minutes travel
+          ⏱️ ${duration} minutes travel
         </div>`;
       } else {
         content += `<div class="tooltip-error">${travelInfo.reason}</div>`;
@@ -17063,6 +17706,20 @@ class TileInteractionUI {
     }
     this.hoverTile = null;
   }
+  /**
+   * Show interaction modal for adjacent tile with POIs
+   */
+  show(position, territory) {
+    this.updateHoverInfo(position, territory);
+    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
+    const npcs = this.npcManager?.getNPCsAtTile(position) || [];
+    let message = `🔍 Adjacent tile (${position.q}, ${position.r}): `;
+    if (nodes.length > 0) message += `${nodes.length} resource(s) `;
+    if (npcs.length > 0) message += `${npcs.length} NPC(s) `;
+    if (territory?.hasEvent) message += `event available `;
+    message += "— Move there to interact.";
+    this.addGameLog(message);
+  }
   updateCurrentTile(position, territory) {
     this.currentPosition = position;
     this.currentTile = territory;
@@ -17589,11 +18246,11 @@ class DialogueUI {
       return;
     }
     this.updateNPCInfo();
-    await this.loadPortrait();
     this.loadConversationHistory();
     this.updateTopics();
     this.container.classList.add("active");
     this.isOpen = true;
+    this.loadPortrait();
     setTimeout(() => {
       this.container.querySelector("#dialogue-text-input").focus();
     }, 300);
@@ -18041,31 +18698,45 @@ function spawnInitialResources(startPos, mapData) {
   console.log(`🌱 Spawned ${nodes.length} resource nodes near starting position`);
 }
 async function spawnInitialNPCs(startPos) {
+  console.log("👥 [1/6] spawnInitialNPCs() called");
   if (!gameState.npcManager) {
     console.warn("⚠️ NPCManager not initialized, skipping NPC spawn");
     return;
   }
-  console.log("👥 Spawning initial NPCs...");
+  console.log("👥 [2/6] NPCManager exists");
   const castawayCount = 2 + Math.floor(Math.random() * 2);
+  console.log(`👥 [3/6] Will spawn ${castawayCount} castaways`);
   for (let i = 0; i < castawayCount; i++) {
+    console.log(`👥 [4/6] Starting spawn for NPC ${i + 1}/${castawayCount}`);
     const distance = 2 + Math.floor(Math.random() * 3);
     const angle = Math.PI * 2 * i / castawayCount;
     const q = startPos.q + Math.round(Math.cos(angle) * distance);
     const r = startPos.r + Math.round(Math.sin(angle) * distance);
+    console.log(`👥   [4a] NPC ${i + 1} position: (${q}, ${r}), distance: ${distance}`);
     try {
+      console.log(`👥   [4b] Calling spawnNPC for NPC ${i + 1}...`);
       const npc = await gameState.npcManager.spawnNPC({
         faction: "castaway",
         tile: { q, r },
         gender: Math.random() > 0.5 ? "female" : "male"
-      }, true);
+      }, false);
+      console.log(`👥   [4c] spawnNPC returned for NPC ${i + 1}`);
       if (npc) {
-        console.log(`  ✅ Spawned ${npc.identity.name} at (${q}, ${r})`);
+        console.log(`👥   [4d] ✅ Spawned ${npc.identity.name} at (${q}, ${r})`);
+        gameState.npcManager.enrichWithAI(npc).catch((err) => {
+          console.warn(`  ⚠️ Failed to AI-enrich ${npc.identity.name}:`, err);
+        });
+      } else {
+        console.warn(`👥   [4e] ⚠️ spawnNPC returned null for NPC ${i + 1}`);
       }
     } catch (error) {
-      console.error(`  ❌ Failed to spawn NPC ${i + 1}:`, error);
+      console.error(`👥   [4f] ❌ Failed to spawn NPC ${i + 1}:`, error);
     }
   }
-  console.log(`👥 Spawned ${castawayCount} initial NPCs`);
+  console.log(`👥 [5/6] Finished spawning loop`);
+  console.log(`👥 [6/6] ✅ Spawned ${castawayCount} initial NPCs - COMPLETE`);
+  console.log("🔄 Starting background NPC generation...");
+  gameState.npcManager.startBackgroundGeneration();
 }
 function setupTravelEvents() {
   travelSystem.on("travelStart", (data) => {
@@ -18632,6 +19303,51 @@ aside::-webkit-scrollbar-thumb:hover {
   font-style: italic;
 }
 
+/* Discord Logo Link */
+.discord-logo-link {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 120px;
+  height: 120px;
+  z-index: 1001;
+  transition: all 0.3s ease;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  background: rgba(11, 12, 13, 0.9);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.discord-logo-link:hover {
+  transform: scale(1.1) translateY(-5px);
+  box-shadow: 
+    0 8px 25px rgba(0, 0, 0, 0.7),
+    0 0 30px rgba(180, 122, 60, 0.4);
+  background: rgba(11, 12, 13, 1);
+}
+
+.discord-logo-link:active {
+  transform: scale(1.05) translateY(-3px);
+}
+
+.menu-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+  transition: filter 0.3s ease;
+}
+
+.discord-logo-link:hover .menu-logo {
+  filter: 
+    drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5))
+    brightness(1.2);
+}
+
 /* Game View */
 .game-view {
   width: 100%;
@@ -18778,6 +19494,15 @@ aside::-webkit-scrollbar-thumb:hover {
     font-size: 1rem;
     padding: 12px 25px;
     text-align: center;
+  }
+  
+  .discord-logo-link {
+    width: 80px;
+    height: 80px;
+    bottom: 15px;
+    right: 15px;
+    border-radius: 15px;
+    padding: 8px;
   }
 }
 /* Settings Menu Styles */
@@ -26144,6 +26869,11 @@ aside::-webkit-scrollbar-thumb:hover {
         
         <p class="version-info">v3.0.0 - Turn-Based Update</p>
       </div>
+      
+      <!-- Discord Link Logo -->
+      <a href="https://discord.com/invite/E6N9WKpGPA" target="_blank" rel="noopener noreferrer" class="discord-logo-link" title="Join our Discord community!">
+        <img src="data:image/svg+xml,%3c?xml%20version='1.0'%20encoding='utf-8'?%3e%3csvg%20xmlns='http://www.w3.org/2000/svg'%20version='1.1'%20width='4096'%20height='4096'%20viewBox='0%200%204096%204096'%3e%3crect%20x='0'%20y='0'%20width='4096'%20height='4096'%20fill='%230b0c0d'%20/%3e%3cg%20fill='%23b47a3c'%20fill-rule='evenodd'%20stroke='none'%3e%3cpath%20d='M%201686%203585%20L%201646%203585%20L%201646%203592%20L%201650%203596%20L%201650%203608%20L%201624%203660%20L%201613%203660%20L%201611%203657%20L%201610%203641%20L%201605%203617%20L%201605%203601%20L%201615%203592%20L%201615%203585%20L%201563%203585%20L%201563%203593%20L%201571%203604%20L%201577%203626%20L%201591%203697%20L%201591%203713%20L%201574%203744%20L%201560%203762%20L%201549%203762%20L%201543%203758%20L%201534%203758%20L%201530%203761%20L%201528%203765%20L%201528%203776%20L%201532%203781%20L%201536%203783%20L%201550%203783%20L%201566%203774%20L%201578%203762%20L%201600%203730%20L%201623%203688%20L%201667%203615%20L%201678%203600%20L%201686%203593%20Z%20M%202575%203563%20L%202563%203565%20L%202547%203571%20L%202536%203578%20L%202522%203591%20L%202513%203604%20L%202505%203624%20L%202503%203649%20L%202505%203664%20L%202510%203678%20L%202521%203695%20L%202531%203705%20L%202543%203713%20L%202562%203720%20L%202585%203721%20L%202616%203712%20L%202626%203707%20L%202641%203697%20L%202642%203687%20L%202632%203687%20L%202621%203693%20L%202602%203700%20L%202577%203701%20L%202571%203699%20L%202560%203692%20L%202549%203678%20L%202544%203662%20L%202544%203646%20L%202549%203642%20L%202639%203641%20L%202642%203640%20L%202646%203634%20L%202646%203617%20L%202638%203593%20L%202632%203584%20L%202624%203576%20L%202615%203570%20L%202602%203565%20L%202592%203563%20Z%20M%202604%203588%20L%202604%203589%20L%202606%203592%20L%202606%203594%20L%202607%203595%20L%202607%203613%20L%202606%203614%20L%202606%203615%20L%202605%203616%20L%202605%203617%20L%202599%203623%20L%202598%203623%20L%202597%203624%20L%202595%203624%20L%202594%203625%20L%202551%203625%20L%202550%203624%20L%202548%203624%20L%202545%203621%20L%202545%203610%20L%202546%203609%20L%202546%203606%20L%202548%203603%20L%202548%203601%20L%202550%203599%20L%202550%203598%20L%202551%203597%20L%202551%203596%20L%202553%203594%20L%202553%203593%20L%202557%203589%20L%202557%203588%20L%202560%203585%20L%202561%203585%20L%202564%203582%20L%202565%203582%20L%202568%203580%20L%202570%203580%20L%202571%203579%20L%202574%203579%20L%202575%203578%20L%202588%203578%20L%202589%203579%20L%202592%203579%20L%202593%203580%20L%202594%203580%20L%202595%203581%20L%202596%203581%20L%202597%203582%20L%202598%203582%20Z%20M%202383%203562%20L%202382%203563%20L%202371%203564%20L%202355%203569%20L%202342%203576%20L%202325%203591%20L%202317%203602%20L%202309%203620%20L%202306%203633%20L%202306%203650%20L%202312%203672%20L%202317%203682%20L%202325%203693%20L%202336%203704%20L%202351%203713%20L%202359%203715%20L%202369%203720%20L%202380%203722%20L%202392%203722%20L%202393%203721%20L%202405%203720%20L%202417%203715%20L%202427%203713%20L%202435%203709%20L%202442%203704%20L%202457%203689%20L%202465%203677%20L%202470%203665%20L%202473%203653%20L%202474%203632%20L%202472%203622%20L%202465%203604%20L%202458%203593%20L%202446%203581%20L%202436%203574%20L%202415%203565%20L%202398%203563%20L%202397%203562%20Z%20M%202379%203579%20L%202396%203579%20L%202397%203580%20L%202400%203580%20L%202403%203582%20L%202405%203582%20L%202412%203586%20L%202422%203596%20L%202422%203597%20L%202426%203602%20L%202430%203610%20L%202430%203612%20L%202432%203615%20L%202432%203618%20L%202433%203619%20L%202433%203629%20L%202434%203630%20L%202434%203662%20L%202433%203663%20L%202433%203671%20L%202432%203672%20L%202431%203677%20L%202423%203690%20L%202414%203699%20L%202405%203704%20L%202402%203704%20L%202401%203705%20L%202381%203705%20L%202380%203704%20L%202377%203704%20L%202369%203700%20L%202358%203689%20L%202358%203688%20L%202356%203686%20L%202351%203676%20L%202351%203674%20L%202348%203667%20L%202347%203660%20L%202346%203659%20L%202346%203651%20L%202345%203650%20L%202345%203626%20L%202346%203625%20L%202347%203614%20L%202348%203613%20L%202350%203605%20L%202352%203602%20L%202352%203600%20L%202357%203592%20L%202361%203588%20L%202362%203588%20L%202365%203585%20Z%20M%201996%203578%20L%201996%203585%20L%202014%203599%20L%202017%203607%20L%202017%203691%20L%202009%203703%20L%202000%203707%20L%202002%203715%20L%202070%203714%20L%202070%203707%20L%202059%203701%20L%202053%203693%20L%202051%203621%20L%202057%203605%20L%202070%203592%20L%202087%203585%20L%202106%203588%20L%202116%203601%20L%202119%203617%20L%202119%203690%20L%202115%203699%20L%202102%203707%20L%202102%203714%20L%202172%203714%20L%202172%203707%20L%202159%203698%20L%202155%203686%20L%202155%203614%20L%202168%203596%20L%202189%203585%20L%202209%203588%20L%202217%203597%20L%202221%203610%20L%202222%203687%20L%202218%203699%20L%202205%203707%20L%202205%203715%20L%202276%203714%20L%202276%203707%20L%202266%203703%20L%202258%203690%20L%202258%203618%20L%202255%203599%20L%202248%203582%20L%202232%203567%20L%202214%203562%20L%202197%203564%20L%202176%203573%20L%202159%203586%20L%202148%203586%20L%202134%203569%20L%202115%203562%20L%202085%203567%20L%202063%203580%20L%202052%203580%20L%202047%203565%20L%202037%203565%20Z%20M%201456%203506%20L%201422%203510%20L%201416%203513%20L%201416%203521%20L%201422%203523%20L%201426%203527%20L%201426%203544%20L%201411%203617%20L%201408%203646%20L%201402%203666%20L%201401%203681%20L%201398%203690%20L%201398%203699%20L%201400%203703%20L%201409%203711%20L%201432%203719%20L%201449%203719%20L%201460%203715%20L%201468%203714%20L%201483%203707%20L%201494%203699%20L%201506%203687%20L%201519%203668%20L%201526%203651%20L%201529%203637%20L%201529%203617%20L%201526%203606%20L%201518%203593%20L%201511%203587%20L%201494%203581%20L%201480%203581%20L%201462%203588%20L%201450%203587%20L%201450%203570%20L%201459%203520%20L%201459%203509%20Z%20M%201483%203599%20L%201484%203600%20L%201487%203601%20L%201494%203608%20L%201494%203609%20L%201496%203612%20L%201496%203614%20L%201497%203615%20L%201497%203620%20L%201498%203621%20L%201498%203637%20L%201497%203638%20L%201497%203645%20L%201496%203646%20L%201496%203650%20L%201495%203651%20L%201495%203653%20L%201494%203654%20L%201494%203657%20L%201493%203658%20L%201492%203663%20L%201490%203666%20L%201490%203668%20L%201489%203669%20L%201486%203676%20L%201484%203678%20L%201483%203681%20L%201480%203684%20L%201480%203685%20L%201475%203690%20L%201475%203691%20L%201466%203699%20L%201465%203699%20L%201458%203703%20L%201456%203703%20L%201455%203704%20L%201441%203704%20L%201440%203703%20L%201438%203703%20L%201432%203698%20L%201432%203697%20L%201430%203694%20L%201430%203681%20L%201431%203680%20L%201431%203676%20L%201432%203675%20L%201432%203671%20L%201433%203670%20L%201433%203666%20L%201434%203665%20L%201434%203659%20L%201435%203658%20L%201435%203653%20L%201436%203652%20L%201436%203649%20L%201437%203648%20L%201437%203643%20L%201438%203642%20L%201438%203636%20L%201439%203635%20L%201439%203631%20L%201440%203630%20L%201440%203628%20L%201441%203627%20L%201442%203622%20L%201445%203618%20L%201445%203617%20L%201457%203605%20L%201458%203605%20L%201460%203603%20L%201461%203603%20L%201464%203601%20L%201469%203600%20L%201470%203599%20Z%20M%201941%203506%20L%201919%203494%20L%201893%203488%20L%201873%203486%20L%201788%203488%20L%201788%203495%20L%201798%203501%20L%201805%203508%20L%201809%203523%20L%201809%203686%20L%201806%203696%20L%201800%203702%20L%201789%203707%20L%201789%203715%20L%201871%203714%20L%201871%203707%20L%201861%203702%20L%201854%203695%20L%201851%203688%20L%201851%203631%20L%201858%203626%20L%201887%203626%20L%201908%203622%20L%201922%203617%20L%201940%203606%20L%201954%203592%20L%201964%203572%20L%201966%203548%20L%201959%203527%20L%201953%203518%20Z%20M%201859%203503%20L%201879%203503%20L%201880%203504%20L%201884%203504%20L%201885%203505%20L%201888%203505%20L%201889%203506%20L%201891%203506%20L%201892%203507%20L%201894%203507%20L%201896%203508%20L%201898%203510%20L%201901%203511%20L%201904%203514%20L%201905%203514%20L%201912%203521%20L%201912%203522%20L%201916%203527%20L%201920%203535%20L%201920%203538%20L%201921%203539%20L%201921%203545%20L%201922%203546%20L%201922%203568%20L%201921%203569%20L%201921%203576%20L%201920%203577%20L%201920%203580%20L%201918%203584%20L%201916%203586%20L%201916%203587%20L%201913%203590%20L%201913%203591%20L%201905%203599%20L%201904%203599%20L%201901%203602%20L%201893%203606%20L%201891%203606%20L%201887%203608%20L%201883%203608%20L%201882%203609%20L%201858%203609%20L%201857%203608%20L%201855%203608%20L%201851%203604%20L%201851%203602%20L%201850%203601%20L%201850%203513%20L%201851%203512%20L%201851%203510%20L%201852%203508%20L%201855%203505%20Z%20M%201953%203017%20L%201935%203039%20L%201931%203051%20L%201931%203068%20L%201938%203088%20L%201956%203110%20L%201956%203122%20L%201925%203147%20L%201910%203168%20L%201901%203190%20L%201901%203227%20L%201913%203255%20L%201935%203275%20L%201955%203284%20L%201978%203288%20L%202008%203286%20L%202027%203279%20L%202053%203263%20L%202072%203246%20L%202083%203246%20L%202108%203273%20L%202119%203279%20L%202134%203282%20L%202181%203282%20L%202182%203273%20L%202168%203263%20L%202114%203205%20L%202114%203193%20L%202156%203135%20L%202177%203119%20L%202177%203111%20L%202093%203111%20L%202093%203119%20L%202108%203126%20L%202115%203133%20L%202117%203151%20L%202100%203179%20L%202088%203179%20L%202024%203116%20L%202024%203104%20L%202047%203088%20L%202069%203061%20L%202074%203046%20L%202074%203034%20L%202065%203015%20L%202040%203000%20L%202007%202997%20L%201980%203003%20Z%20M%201972%203140%20L%201985%203140%20L%201987%203141%20L%202032%203185%20L%202032%203186%20L%202041%203195%20L%202041%203196%20L%202056%203211%20L%202056%203212%20L%202060%203216%20L%202060%203228%20L%202053%203235%20L%202052%203235%20L%202043%203242%20L%202031%203248%20L%202029%203248%20L%202028%203249%20L%202026%203249%20L%202019%203252%20L%202015%203252%20L%202014%203253%20L%201992%203253%20L%201991%203252%20L%201980%203249%20L%201974%203246%20L%201972%203244%20L%201971%203244%20L%201960%203233%20L%201960%203232%20L%201957%203229%20L%201952%203219%20L%201952%203217%20L%201950%203213%20L%201950%203209%20L%201949%203208%20L%201949%203202%20L%201948%203201%20L%201948%203188%20L%201949%203187%20L%201949%203181%20L%201950%203180%20L%201951%203173%20L%201954%203167%20L%201954%203165%20L%201963%203150%20Z%20M%202019%203017%20L%202020%203018%20L%202022%203018%20L%202023%203019%20L%202024%203019%20L%202026%203021%20L%202027%203021%20L%202035%203029%20L%202035%203030%20L%202037%203032%20L%202037%203033%20L%202038%203034%20L%202038%203036%20L%202040%203039%20L%202040%203055%20L%202039%203056%20L%202039%203058%20L%202038%203059%20L%202038%203061%20L%202037%203062%20L%202037%203063%20L%202036%203064%20L%202036%203065%20L%202035%203066%20L%202035%203067%20L%202034%203068%20L%202033%203071%20L%202031%203073%20L%202031%203074%20L%202027%203078%20L%202027%203079%20L%202017%203089%20L%202016%203089%20L%202013%203092%20L%202012%203092%20L%202009%203094%20L%201998%203094%20L%201997%203093%20L%201996%203093%20L%201987%203084%20L%201987%203083%20L%201984%203080%20L%201984%203079%20L%201982%203077%20L%201981%203074%20L%201979%203072%20L%201979%203070%20L%201977%203067%20L%201977%203065%20L%201976%203064%20L%201976%203062%20L%201975%203061%20L%201975%203058%20L%201974%203057%20L%201974%203045%20L%201975%203044%20L%201975%203041%20L%201976%203040%20L%201976%203038%20L%201978%203035%20L%201978%203033%20L%201980%203031%20L%201980%203030%20L%201982%203028%20L%201982%203027%20L%201985%203024%20L%201986%203024%20L%201991%203020%20L%201992%203020%20L%201993%203019%20L%201995%203019%20L%201996%203018%20L%201999%203018%20L%202000%203017%20Z%20M%202644%202977%20L%202644%202985%20L%202661%202995%20L%202669%203003%20L%202673%203014%20L%202673%203243%20L%202669%203256%20L%202644%203275%20L%202644%203282%20L%202650%203285%20L%202750%203285%20L%202757%203282%20L%202757%203275%20L%202738%203264%20L%202729%203248%20L%202729%203160%20L%202735%203151%20L%202749%203151%20L%202761%203160%20L%202814%203243%20L%202839%203273%20L%202866%203286%20L%202909%203288%20L%202922%203285%20L%202924%203276%20L%202900%203261%20L%202883%203245%20L%202814%203149%20L%202814%203138%20L%202853%203109%20L%202866%203091%20L%202873%203074%20L%202874%203039%20L%202860%203010%20L%202833%202988%20L%202799%202977%20Z%20M%202736%203003%20L%202738%203003%20L%202739%203002%20L%202744%203002%20L%202745%203001%20L%202761%203001%20L%202762%203002%20L%202771%203002%20L%202772%203003%20L%202775%203003%20L%202776%203004%20L%202781%203005%20L%202790%203010%20L%202800%203019%20L%202800%203020%20L%202805%203026%20L%202809%203034%20L%202809%203036%20L%202811%203039%20L%202812%203044%20L%202814%203047%20L%202814%203049%20L%202816%203053%20L%202816%203057%20L%202817%203058%20L%202817%203071%20L%202816%203072%20L%202816%203077%20L%202815%203078%20L%202811%203092%20L%202809%203095%20L%202809%203097%20L%202804%203106%20L%202794%203116%20L%202785%203121%20L%202783%203121%20L%202779%203123%20L%202776%203123%20L%202775%203124%20L%202771%203124%20L%202770%203125%20L%202760%203125%20L%202759%203126%20L%202741%203126%20L%202740%203125%20L%202736%203125%20L%202734%203124%20L%202729%203119%20L%202729%203116%20L%202728%203115%20L%202728%203033%20L%202729%203032%20L%202729%203012%20L%202730%203011%20L%202730%203009%20Z%20M%203521%202976%20L%203522%202985%20L%203544%203001%20L%203549%203028%20L%203548%203246%20L%203542%203259%20L%203523%203274%20L%203523%203282%20L%203733%203284%20L%203739%203281%20L%203750%203235%20L%203750%203215%20L%203742%203215%20L%203706%203252%20L%203695%203257%20L%203616%203257%20L%203606%203247%20L%203606%203143%20L%203610%203137%20L%203671%203137%20L%203684%203143%20L%203699%203159%20L%203706%203159%20L%203708%203155%20L%203708%203093%20L%203705%203087%20L%203698%203087%20L%203684%203101%20L%203668%203108%20L%203614%203109%20L%203607%203104%20L%203607%203007%20L%203620%203001%20L%203694%203002%20L%203707%203011%20L%203720%203037%20L%203730%203040%20L%203733%203035%20L%203731%202977%20L%203726%202974%20Z%20M%203148%202975%20L%203148%202984%20L%203175%203006%20L%203181%203020%20L%203181%203240%20L%203174%203256%20L%203153%203272%20L%203152%203282%20L%203158%203285%20L%203243%203282%20L%203243%203274%20L%203222%203258%20L%203217%203247%20L%203216%203081%20L%203217%203068%20L%203230%203067%20L%203410%203278%20L%203423%203289%20L%203435%203288%20L%203438%203013%20L%203443%203002%20L%203463%202983%20L%203463%202976%20L%203370%202976%20L%203370%202983%20L%203395%203002%20L%203401%203015%20L%203403%203164%20L%203390%203166%20L%203229%202977%20Z%20M%202980%202974%20L%202975%202977%20L%202975%202985%20L%202995%202999%20L%203001%203013%20L%203001%203247%20L%202994%203261%20L%202973%203275%20L%202973%203282%20L%202976%203284%20L%203081%203285%20L%203085%203283%20L%203085%203275%20L%203069%203266%20L%203061%203258%20L%203057%203246%20L%203057%203012%20L%203063%202998%20L%203080%202984%20L%203080%202976%20L%203076%202974%20Z%20M%202525%202989%20L%202499%202978%20L%202473%202973%20L%202343%202974%20L%202339%202976%20L%202339%202984%20L%202354%202993%20L%202363%203002%20L%202368%203015%20L%202368%203243%20L%202362%203256%20L%202340%203274%20L%202342%203283%20L%202471%203284%20L%202500%203281%20L%202521%203275%20L%202543%203264%20L%202562%203248%20L%202575%203231%20L%202585%203197%20L%202584%203179%20L%202580%203164%20L%202570%203146%20L%202556%203131%20L%202527%203114%20L%202527%203103%20L%202547%203084%20L%202556%203068%20L%202560%203051%20L%202558%203030%20L%202544%203005%20Z%20M%202427%203135%20L%202432%203133%20L%202447%203133%20L%202448%203134%20L%202478%203134%20L%202479%203135%20L%202483%203135%20L%202491%203138%20L%202494%203138%20L%202502%203142%20L%202516%203155%20L%202521%203163%20L%202521%203165%20L%202523%203168%20L%202523%203170%20L%202525%203174%20L%202525%203177%20L%202526%203178%20L%202526%203183%20L%202527%203184%20L%202527%203201%20L%202526%203202%20L%202525%203213%20L%202518%203229%20L%202515%203233%20L%202503%203244%20L%202494%203249%20L%202492%203249%20L%202486%203252%20L%202478%203253%20L%202477%203254%20L%202472%203254%20L%202471%203255%20L%202465%203255%20L%202464%203256%20L%202444%203256%20L%202443%203255%20L%202437%203255%20L%202436%203254%20L%202430%203253%20L%202425%203248%20L%202423%203243%20L%202423%203140%20Z%20M%202431%203001%20L%202433%203001%20L%202437%202999%20L%202442%202999%20L%202443%202998%20L%202455%202998%20L%202456%202999%20L%202466%203000%20L%202467%203001%20L%202475%203003%20L%202479%203005%20L%202481%203007%20L%202484%203008%20L%202487%203011%20L%202488%203011%20L%202496%203020%20L%202500%203028%20L%202500%203030%20L%202501%203031%20L%202501%203033%20L%202503%203037%20L%202503%203040%20L%202504%203041%20L%202504%203063%20L%202503%203064%20L%202502%203071%20L%202501%203072%20L%202499%203080%20L%202495%203087%20L%202492%203090%20L%202492%203091%20L%202483%203099%20L%202475%203103%20L%202469%203104%20L%202468%203105%20L%202463%203105%20L%202462%203106%20L%202435%203106%20L%202434%203105%20L%202430%203105%20L%202428%203104%20L%202424%203100%20L%202423%203098%20L%202423%203010%20L%202425%203006%20Z%20M%20423%202972%20L%20423%202981%20L%20452%203009%20L%20449%203132%20L%20438%203248%20L%20407%203274%20L%20408%203282%20L%20502%203282%20L%20502%203273%20L%20482%203259%20L%20475%203245%20L%20483%203078%20L%20495%203079%20L%20588%203283%20L%20602%203288%20L%20629%203239%20L%20700%203074%20L%20713%203078%20L%20724%203250%20L%20698%203274%20L%20698%203282%20L%20809%203281%20L%20809%203274%20L%20789%203262%20L%20780%203247%20L%20770%203126%20L%20766%203012%20L%20771%202999%20L%20794%202982%20L%20793%202973%20L%20707%202975%20L%20616%203187%20L%20605%203187%20L%20506%202972%20Z%20M%201704%202974%20L%201673%202978%20L%201642%202969%20L%201603%202970%20L%201566%202987%20L%201542%203014%20L%201531%203047%20L%201531%203065%20L%201541%203097%20L%201553%203113%20L%201573%203130%20L%201630%203159%20L%201654%203175%20L%201672%203197%20L%201675%203222%20L%201667%203245%20L%201654%203257%20L%201637%203265%20L%201606%203265%20L%201569%203247%20L%201551%203228%20L%201536%203203%20L%201527%203202%20L%201525%203234%20L%201528%203269%20L%201534%203282%20L%201565%203279%20L%201603%203291%20L%201647%203290%20L%201672%203282%20L%201689%203272%20L%201717%203240%20L%201726%203216%20L%201728%203187%20L%201722%203163%20L%201713%203147%20L%201682%203119%20L%201606%203080%20L%201590%203064%20L%201582%203044%20L%201583%203026%20L%201594%203007%20L%201613%202996%20L%201640%202995%20L%201657%203000%20L%201675%203011%20L%201689%203028%20L%201699%203048%20L%201710%203051%20L%201709%202984%20Z%20M%201427%202974%20L%201398%202979%20L%201364%202969%20L%201322%202971%20L%201286%202989%20L%201264%203015%20L%201255%203038%20L%201253%203065%20L%201265%203100%20L%201293%203129%20L%201377%203175%20L%201396%203199%20L%201399%203223%20L%201394%203241%20L%201376%203259%20L%201363%203265%20L%201329%203265%20L%201291%203244%20L%201274%203225%20L%201259%203202%20L%201252%203202%20L%201250%203224%20L%201253%203266%20L%201260%203282%20L%201289%203279%20L%201330%203292%20L%201378%203289%20L%201408%203276%20L%201429%203258%20L%201439%203244%20L%201450%203216%20L%201451%203182%20L%201445%203161%20L%201437%203148%20L%201405%203119%20L%201327%203080%20L%201312%203065%20L%201305%203048%20L%201306%203025%20L%201317%203007%20L%201341%202995%20L%201363%202995%20L%201398%203011%20L%201409%203023%20L%201422%203048%20L%201432%203051%20L%201433%202992%20Z%20M%201065%202973%20L%201037%202969%20L%201001%202970%20L%20971%202976%20L%20929%202994%20L%20904%203012%20L%20882%203035%20L%20869%203055%20L%20859%203077%20L%20853%203099%20L%20850%203138%20L%20854%203164%20L%20862%203190%20L%20881%203224%20L%20902%203248%20L%20922%203263%20L%20956%203280%20L%20997%203289%20L%201035%203289%20L%201061%203284%20L%201092%203273%20L%201127%203252%20L%201151%203230%20L%201169%203205%20L%201181%203179%20L%201189%203146%20L%201190%203117%20L%201185%203087%20L%201169%203049%20L%201150%203023%20L%201126%203001%20L%201093%202982%20Z%20M%20999%202998%20L%201032%202998%20L%201041%203000%20L%201063%203008%20L%201081%203019%20L%201099%203038%20L%201111%203059%20L%201117%203075%20L%201125%203115%20L%201125%203152%20L%201121%203177%20L%201115%203197%20L%201103%203221%20L%201085%203241%20L%201075%203248%20L%201058%203256%20L%201030%203264%20L%201014%203264%20L%20980%203254%20L%20962%203244%20L%20944%203226%20L%20933%203209%20L%20924%203188%20L%20915%203144%20L%20915%203114%20L%20918%203088%20L%20926%203062%20L%20935%203043%20L%20946%203028%20L%20964%203011%20L%20978%203004%20Z%20M%201873%202470%20L%201873%202479%20L%201881%202489%20L%201937%202527%20L%201980%202546%20L%202013%202554%20L%202034%202556%20L%202084%202554%20L%202127%202543%20L%202173%202521%20L%202216%202492%20L%202228%202479%20L%202226%202468%20L%202214%202456%20L%202191%202440%20L%202166%202426%20L%202125%202408%20L%202100%202401%20L%202073%202397%20L%202027%202397%20L%202002%202401%20L%201967%202411%20L%201944%202421%20L%201909%202440%20L%201882%202459%20Z%20M%203100%201715%20L%203089%201716%20L%203075%201728%20L%202999%201772%20L%202999%201780%20L%203025%201811%20L%203048%201851%20L%203057%201882%20L%203059%201928%20L%203056%201947%20L%203048%201972%20L%203037%201994%20L%203025%202011%20L%203001%202033%20L%202978%202047%20L%202949%202055%20L%202932%202057%20L%202932%202065%20L%202938%202071%20L%202958%202082%20L%202979%202087%20L%203013%202086%20L%203044%202077%20L%203077%202059%20L%203097%202043%20L%203125%202012%20L%203144%201981%20L%203154%201959%20L%203162%201932%20L%203167%201901%20L%203167%201860%20L%203162%201827%20L%203155%201803%20L%203135%201759%20L%203119%201736%20Z%20M%20998%201714%20L%20974%201741%20L%20956%201772%20L%20945%201797%20L%20934%201837%20L%20931%201890%20L%20937%201931%20L%20945%201958%20L%20964%201997%20L%20979%202018%20L%201001%202042%20L%201031%202065%20L%201057%202078%20L%201085%202086%20L%201119%202087%20L%201143%202081%20L%201162%202070%20L%201167%202065%20L%201167%202057%20L%201124%202048%20L%201089%202026%20L%201072%202008%20L%201059%201988%20L%201048%201963%20L%201042%201940%20L%201041%201892%20L%201050%201855%20L%201071%201815%20L%201100%201781%20L%201100%201772%20L%201048%201743%20L%201007%201714%20Z%20M%201298%201439%20L%201281%201550%20L%201339%201659%20L%201382%201474%20L%201458%201467%20L%201526%201534%20L%201414%201665%20L%201336%201846%20L%201251%202384%20L%201523%202598%20L%201795%202734%20L%201475%202454%20L%201354%202226%20L%201362%202072%20L%201432%201933%20L%201422%202123%20L%201486%202273%20L%201532%202170%20L%201582%202335%20L%201722%202445%20L%201730%202169%20L%201814%201900%20L%201726%201885%20L%201669%201797%20L%201614%201784%20L%201683%201746%20L%201844%201757%20L%201912%201808%20L%201801%202187%20L%201822%202419%20L%202002%202311%20L%201999%202216%20L%201904%202204%20L%201883%202132%20L%201927%202066%20L%202042%202041%20L%202175%202067%20L%202217%202130%20L%202199%202202%20L%202099%202218%20L%202100%202316%20L%202292%202408%20L%202298%202182%20L%202187%201821%20L%202223%201769%20L%202387%201743%20L%202485%201771%20L%202369%201886%20L%202284%201900%20L%202369%202165%20L%202377%202444%20L%202517%202336%20L%202564%202168%20L%202612%202276%20L%202642%202244%20L%202677%201927%20L%202752%202143%20L%202717%202321%20L%202579%202503%20L%202304%202732%20L%202612%202575%20L%202847%202390%20L%202770%201868%20L%202686%201668%20L%202574%201533%20L%202640%201467%20L%202718%201476%20L%202760%201660%20L%202818%201483%20L%202744%201381%20L%202606%201364%20L%202474%201467%20L%202133%201405%20L%201886%201410%20L%201627%201467%20L%201539%201383%20L%201429%201357%20Z%20M%202903%20807%20L%202826%20814%20L%202771%20842%20L%202735%20883%20L%202709%20961%20L%202713%201031%20L%202744%201101%20L%202790%201153%20L%202913%201247%20L%202960%201292%20L%203009%201373%20L%203013%201438%20L%202993%201498%20L%202953%201540%20L%202869%201587%20L%202844%201649%20L%202809%201704%20L%202813%201715%20L%202846%201720%20L%202903%201717%20L%202967%201701%20L%203022%201677%20L%203073%201642%20L%203108%201606%20L%203137%201561%20L%203158%201509%20L%203168%201448%20L%203155%201349%20L%203133%201296%20L%203102%201247%20L%203019%201165%20L%202870%201065%20L%202835%201018%20L%202829%20968%20L%202840%20929%20L%202865%20903%20L%202907%20893%20L%202961%20900%20L%203012%20936%20L%203029%20978%20L%203014%201044%20L%203032%201046%20L%203054%201037%20L%203081%20998%20L%203081%20935%20L%203051%20880%20L%203023%20853%20L%202973%20824%20Z%20M%201209%20806%20L%201133%20821%20L%201064%20863%20L%201019%20930%20L%201017%20995%20L%201045%201037%20L%201067%201046%20L%201086%201044%20L%201070%20983%20L%201087%20936%20L%201139%20899%20L%201204%20894%20L%201239%20906%20L%201263%20936%20L%201271%20987%20L%201262%201023%20L%201228%201065%20L%201074%201169%20L%201003%201239%20L%20969%201290%20L%20946%201343%20L%20933%201400%20L%20932%201451%20L%20954%201544%20L%20983%201596%20L%201019%201637%20L%201118%201696%20L%201195%201717%20L%201250%201720%20L%201284%201715%20L%201288%201704%20L%201254%201648%20L%201234%201595%20L%201222%201581%20L%201146%201540%20L%201115%201511%20L%201090%201463%20L%201086%201389%20L%201103%201341%20L%201135%201295%20L%201189%201244%20L%201301%201159%20L%201344%201113%20L%201381%201042%20L%201390%20973%20L%201373%20902%20L%201330%20845%20L%201271%20813%20Z%20M%201205%201414%20L%201209%201468%20L%201225%201485%20L%201250%201409%20L%201305%201342%20L%201401%201294%20L%201511%201293%20L%201590%201228%20L%201639%201144%20L%201652%201148%20L%201639%201227%20L%201564%201326%20L%201631%201383%20L%201733%201332%20L%201788%201216%20L%201801%201219%20L%201805%201265%20L%201776%201365%20L%201822%201370%20L%201891%201342%20L%201975%201243%20L%202037%201213%20L%202110%201231%20L%202203%201337%20L%202276%201370%20L%202324%201365%20L%202294%201271%20L%202297%201220%20L%202310%201216%20L%202365%201330%20L%202468%201383%20L%202536%201326%20L%202464%201232%20L%202449%201147%20L%202462%201145%20L%202503%201218%20L%202599%201297%20L%202681%201290%20L%202760%201318%20L%202837%201387%20L%202875%201484%20L%202894%201452%20L%202888%201390%20L%202846%201315%20L%202766%201250%20L%202607%201176%20L%202555%201107%20L%202541%20991%20L%202582%20700%20L%202559%20598%20L%202509%20503%20L%202427%20413%20L%202321%20342%20L%202202%20297%20L%202070%20279%20L%201943%20289%20L%201807%20331%20L%201684%20406%20L%201597%20497%20L%201549%20583%20L%201521%20685%20L%201522%20796%20L%201559%201001%20L%201540%201118%20L%201477%201187%20L%201285%201284%20L%201232%201344%20Z%20M%202458%20905%20L%202458%20916%20L%202453%20921%20L%202429%20934%20L%202420%20941%20L%202417%20948%20L%202416%20977%20L%202405%201014%20L%202392%201037%20L%202373%201055%20L%202362%201061%20L%202342%201068%20L%202318%201073%20L%202304%201074%20L%202270%201073%20L%202251%201068%20L%202230%201059%20L%202218%201059%20L%202207%201069%20L%202197%201083%20L%202185%201082%20L%202187%201057%20L%202195%201033%20L%202206%201012%20L%202229%20981%20L%202241%20969%20L%202266%20950%20L%202293%20937%20L%202335%20925%20L%202440%20903%20L%202455%20903%20Z%20M%201642%20904%20L%201659%20903%20L%201676%20906%20L%201705%20914%20L%201768%20927%20L%201808%20939%20L%201836%20954%20L%201850%20964%20L%201869%20982%20L%201893%201013%20L%201909%201048%20L%201913%201062%20L%201914%201083%20L%201902%201084%20L%201890%201067%20L%201881%201059%20L%201870%201059%20L%201848%201068%20L%201828%201073%20L%201795%201074%20L%201781%201073%20L%201753%201067%20L%201724%201054%20L%201706%201036%20L%201693%201011%20L%201686%20986%20L%201682%20961%20L%201682%20947%20L%201680%20942%20L%201670%20934%20L%201645%20919%20L%201642%20916%20Z'%20/%3e%3c/g%3e%3c/svg%3e" alt="Moss and Brine Logo" class="menu-logo" />
+      </a>
     </div>
     
     <!-- Character Creation (shown after New Game) -->

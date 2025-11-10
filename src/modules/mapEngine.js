@@ -8,10 +8,11 @@ import { SimplexNoise } from '../utils/noise.js';
 import { SeededRandom } from '../utils/seededRandom.js';
 
 export class MapEngine {
-  constructor(seed = Date.now()) {
-    this.seed = seed;
-    this.rng = new SeededRandom(seed);
-    this.hexGrid = new HexGrid(20); // Radius 20 = ~1,200 hexes (approx 40x40)
+  constructor(hexGrid, noise, rng) {
+    this.hexGrid = hexGrid;
+    this.noise = noise;
+    this.rng = rng;
+    this.seed = rng.seed; // Get seed from the rng
     this.tiles = new Map(); // Store tiles by "q,r" key
     
     // Generation parameters

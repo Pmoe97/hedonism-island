@@ -112,14 +112,14 @@ export class PerchanceAI {
       text = text.replace(pattern, '');
     }
     
-    // Remove cringe theatrical phrases
+    // Remove cringe theatrical phrases (but allow normal ellipses)
     const cringePhrases = [
       /\bheh\b\.?/gi,
-      /\.{3,}/g, // Excessive ellipses (3+)
+      /\.{4,}/g, // Only remove REALLY excessive ellipses (4+), allow normal "..." or ".."
     ];
     
     for (const phrase of cringePhrases) {
-      text = text.replace(phrase, '');
+      text = text.replace(phrase, '...');
     }
     
     // Only remove outer quotes if the ENTIRE response is a single quoted string

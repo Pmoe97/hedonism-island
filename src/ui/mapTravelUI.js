@@ -126,7 +126,31 @@ export class MapTravelUI {
       return;
     }
 
+    // Drag detection for click vs drag disambiguation
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    const DRAG_THRESHOLD = 5; // Same as gameView
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      console.log('🗺️ MapTravelUI MOUSEDOWN at', dragStartX, dragStartY);
+    });
+
     canvas.addEventListener('mousemove', (e) => {
+      // Track dragging state
+      if (isDragging) {
+        const dragDistance = Math.sqrt(
+          Math.pow(e.clientX - dragStartX, 2) + 
+          Math.pow(e.clientY - dragStartY, 2)
+        );
+        if (dragDistance > DRAG_THRESHOLD) {
+          console.log('🗺️ MapTravelUI detected drag');
+        }
+      }
+      
       const renderer = window.game.gameView?.renderer;
       if (!renderer) return;
       
@@ -134,12 +158,28 @@ export class MapTravelUI {
       this.onHexHover(hex);
     });
 
-    canvas.addEventListener('click', (e) => {
-      const renderer = window.game.gameView?.renderer;
-      if (!renderer) return;
+    canvas.addEventListener('mouseup', (e) => {
+      // Calculate drag distance
+      const dragDistance = Math.sqrt(
+        Math.pow(e.clientX - dragStartX, 2) + 
+        Math.pow(e.clientY - dragStartY, 2)
+      );
       
-      const hex = renderer.screenToHex(e.clientX, e.clientY);
-      this.onHexClick(hex);
+      console.log('🗺️ MapTravelUI MOUSEUP - drag distance:', dragDistance.toFixed(1));
+      
+      // Only process as click if drag was minimal
+      if (isDragging && dragDistance < DRAG_THRESHOLD) {
+        console.log('🗺️ MapTravelUI: CLICK detected (< threshold)');
+        const renderer = window.game.gameView?.renderer;
+        if (renderer) {
+          const hex = renderer.screenToHex(e.clientX, e.clientY);
+          this.onHexClick(hex);
+        }
+      } else {
+        console.log('🗺️ MapTravelUI: DRAG detected - ignoring click');
+      }
+      
+      isDragging = false;
     });
 
     canvas.addEventListener('mouseleave', () => {
@@ -221,8 +261,9 @@ export class MapTravelUI {
     const travelInfo = this.travelSystem.getTravelInfo(hex.q, hex.r);
     if (travelInfo) {
       if (travelInfo.canTravel) {
+        const duration = isNaN(travelInfo.duration) ? '?' : travelInfo.duration;
         content += `<div class="tooltip-travel">
-          ⏱️ ${travelInfo.duration} minutes travel
+          ⏱️ ${duration} minutes travel
         </div>`;
       } else {
         content += `<div class="tooltip-error">${travelInfo.reason}</div>`;

@@ -71,9 +71,19 @@ export class TravelSystem {
     baseDuration *= terrainMult;
 
     // Elevation change (steeper = slower)
-    if (fromTerritory) {
+    if (fromTerritory && 
+        toTerritory.elevation !== undefined && 
+        fromTerritory.elevation !== undefined &&
+        !isNaN(toTerritory.elevation) &&
+        !isNaN(fromTerritory.elevation)) {
       const elevationChange = Math.abs(toTerritory.elevation - fromTerritory.elevation);
       baseDuration *= (1 + elevationChange * 0.2); // 20% per elevation level
+    }
+
+    // Safety check for NaN
+    if (isNaN(baseDuration)) {
+      console.warn('NaN travel duration calculated for', toPos, 'terrain:', toTerritory.terrain);
+      return 10; // Default fallback
     }
 
     return Math.max(5, Math.ceil(baseDuration)); // Minimum 5 minutes

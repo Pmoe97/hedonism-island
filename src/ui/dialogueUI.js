@@ -122,18 +122,18 @@ export class DialogueUI {
     // Update UI with NPC info
     this.updateNPCInfo();
     
-    // Load portrait (generate if needed)
-    await this.loadPortrait();
-    
     // Load conversation history
     this.loadConversationHistory();
     
     // Update topics
     this.updateTopics();
     
-    // Show container
+    // Show container immediately (don't wait for portrait)
     this.container.classList.add('active');
     this.isOpen = true;
+    
+    // Load portrait asynchronously (don't block UI)
+    this.loadPortrait(); // No await - let it load in background
     
     // Focus input
     setTimeout(() => {

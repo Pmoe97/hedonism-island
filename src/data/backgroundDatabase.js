@@ -203,6 +203,21 @@ export class BackgroundDatabase {
   }
 
   /**
+   * Normalize faction name to match database keys
+   */
+  normalizeFaction(faction) {
+    const factionMap = {
+      'castaway': 'castaway',
+      'natives_clan1': 'native',
+      'natives_clan2': 'native',
+      'mercenaries': 'mercenary',
+      'native': 'native',
+      'mercenary': 'mercenary'
+    };
+    return factionMap[faction] || 'castaway';
+  }
+
+  /**
    * Generate background foundation for NPC
    * (AI will flesh out full backstory using these elements)
    * @param {string} faction - NPC faction
@@ -211,9 +226,10 @@ export class BackgroundDatabase {
    * @returns {object} Background foundation data
    */
   generateBackground(faction, role, seededRandom) {
-    const data = this.data[faction];
+    const normalizedFaction = this.normalizeFaction(faction);
+    const data = this.data[normalizedFaction];
     
-    if (faction === 'castaway') {
+    if (normalizedFaction === 'castaway') {
       return {
         faction: 'castaway',
         mysteriousSkill: seededRandom.choice(data.mysteriousSkills),
@@ -227,7 +243,7 @@ export class BackgroundDatabase {
       };
     }
     
-    if (faction === 'native') {
+    if (normalizedFaction === 'native') {
       return {
         faction: 'native',
         tribe: seededRandom.choice(data.tribes),
@@ -241,7 +257,7 @@ export class BackgroundDatabase {
       };
     }
     
-    if (faction === 'mercenary') {
+    if (normalizedFaction === 'mercenary') {
       return {
         faction: 'mercenary',
         employer: 'Blacksteel Solutions',

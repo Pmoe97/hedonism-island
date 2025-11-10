@@ -280,6 +280,25 @@ export class AppearanceDatabase {
   }
 
   /**
+   * Normalize faction name to database key
+   * @param {string} faction - Game faction name
+   * @returns {string} Database faction key
+   */
+  normalizeFaction(faction) {
+    // Map game faction names to appearance database keys
+    const factionMap = {
+      'castaway': 'castaway',
+      'natives_clan1': 'native',
+      'natives_clan2': 'native',
+      'mercenaries': 'mercenary',
+      'native': 'native',
+      'mercenary': 'mercenary'
+    };
+    
+    return factionMap[faction] || 'castaway'; // Default to castaway
+  }
+
+  /**
    * Generate complete appearance for NPC
    * @param {string} faction - NPC faction
    * @param {string} gender - NPC gender
@@ -287,49 +306,102 @@ export class AppearanceDatabase {
    * @returns {object} Complete appearance data
    */
   generateAppearance(faction, gender, seededRandom) {
+    console.log('👗 [appearance 1/12] Starting generateAppearance');
     const data = this.data;
-    const genderKey = gender === 'male' || gender === 'female' ? gender : 'other';
+    
+    // Normalize faction name
+    const normalizedFaction = this.normalizeFaction(faction);
+    
+    const genderKey = gender === 'male' || gender === 'female' ? gender : 'female'; // Default 'other' to 'female'
+    console.log(`👗 [appearance 2/12] Gender key: ${genderKey} (from ${gender}), Faction: ${normalizedFaction} (from ${faction})`);
 
     // Age
-    const ageRange = data.ageRanges[faction];
-    const age = seededRandom.nextInt(ageRange.min, ageRange.max);
+    const ageRange = data.ageRanges[normalizedFaction];
+    const age = seededRandom.int(ageRange.min, ageRange.max);
+    console.log(`👗 [appearance 3/12] Age: ${age}`);
 
     // Height
     const heightRange = data.heightRanges[genderKey];
-    const height = seededRandom.nextInt(heightRange.min, heightRange.max);
+    const height = seededRandom.int(heightRange.min, heightRange.max);
+    console.log(`👗 [appearance 4/12] Height: ${height}`);
 
     // Skin tone
-    const skinTone = this.weightedChoice(data.skinTones[faction], seededRandom);
+    console.log('👗 [appearance 5/12] Generating skin tone...');
+    const skinTone = this.weightedChoice(data.skinTones[normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 5b/12] Skin tone: ${skinTone}`);
 
     // Hair
-    const hairColor = this.weightedChoice(data.hairColors[faction], seededRandom);
-    const hairStyles = data.hairStyles[genderKey][faction];
+    console.log('👗 [appearance 6/12] Generating hair color...');
+    const hairColor = this.weightedChoice(data.hairColors[normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 6b/12] Hair color: ${hairColor}`);
+    
+    console.log('👗 [appearance 7/12] Generating hair style...');
+    const hairStyles = data.hairStyles[genderKey][normalizedFaction];
     const hairStyle = seededRandom.choice(hairStyles);
+    console.log(`👗 [appearance 7b/12] Hair style: ${hairStyle}`);
+    
+    console.log('👗 [appearance 8/12] Generating hair length...');
     const hairLength = seededRandom.choice(data.hairLengths[genderKey]);
+    console.log(`👗 [appearance 8b/12] Hair length: ${hairLength}`);
 
     // Eyes
+    console.log('👗 [appearance 9/12] Generating eye color...');
     const eyeColor = this.weightedChoice(data.eyeColors, seededRandom);
+    console.log(`👗 [appearance 9b/12] Eye color: ${eyeColor}`);
 
     // Build
-    const build = this.weightedChoice(data.bodyBuilds[genderKey][faction], seededRandom);
+    console.log('👗 [appearance 10/12] Generating body build...');
+    const build = this.weightedChoice(data.bodyBuilds[genderKey][normalizedFaction], seededRandom);
+    console.log(`👗 [appearance 10b/12] Build: ${build}`);
 
     // Clothing
-    const clothingOptions = data.clothing[faction][genderKey];
+    console.log('👗 [appearance 11/12] Generating clothing...');
+    const clothingOptions = data.clothing[normalizedFaction][genderKey];
     const clothing = seededRandom.choice(clothingOptions);
+    console.log(`👗 [appearance 11b/12] Clothing: ${clothing}`);
 
     // Distinctive features (pick 2-3)
-    const featurePool = data.distinctiveFeatures[faction];
-    const featureCount = seededRandom.nextInt(2, 4); // 2-3 features
+    console.log('👗 [appearance 11c/12] Generating distinctive features...');
+    const featurePool = data.distinctiveFeatures[normalizedFaction];
+    console.log(`👗 [appearance 11c1] Feature pool size: ${featurePool.length}`);
+    
+    const featureCount = seededRandom.int(2, 4); // 2-3 features
+    console.log(`👗 [appearance 11c2] Requested features: ${featureCount}`);
+    
     const distinctiveFeatures = [];
     const usedIndices = new Set();
     
-    while (distinctiveFeatures.length < featureCount && usedIndices.size < featurePool.length) {
-      const index = seededRandom.nextInt(0, featurePool.length);
+    // Safety check: ensure we don't try to pick more features than available
+    const maxFeatures = Math.min(featureCount, featurePool.length);
+    console.log(`👗 [appearance 11c3] Max features (capped): ${maxFeatures}`);
+    
+    let attempts = 0;
+    const maxAttempts = featurePool.length * 3; // Safety limit
+    
+    while (distinctiveFeatures.length < maxFeatures && attempts < maxAttempts) {
+      attempts++;
+      const index = seededRandom.int(0, featurePool.length - 1); // int() is now inclusive
+      console.log(`👗 [appearance 11c4] Attempt ${attempts}: index=${index}, already used=${usedIndices.has(index)}`);
+      
       if (!usedIndices.has(index)) {
         usedIndices.add(index);
         distinctiveFeatures.push(featurePool[index]);
+        console.log(`👗 [appearance 11c5] Added feature: "${featurePool[index]}" (total: ${distinctiveFeatures.length})`);
+      }
+      
+      // Extra safety: if we've tried every index and still don't have enough, break
+      if (usedIndices.size >= featurePool.length) {
+        console.log(`👗 [appearance 11c6] Used all available features (${usedIndices.size}), breaking`);
+        break;
       }
     }
+    
+    if (attempts >= maxAttempts) {
+      console.warn(`👗 [appearance 11c7] ⚠️ Hit max attempts (${maxAttempts}), forcing exit`);
+    }
+    
+    console.log(`👗 [appearance 11d/12] Features: ${distinctiveFeatures.length} features selected in ${attempts} attempts`);
+    console.log('👗 [appearance 12/12] ✅ Appearance generation complete');
 
     return {
       gender,

@@ -99,6 +99,27 @@ export class TileInteractionUI {
     this.hoverTile = null;
   }
 
+  /**
+   * Show interaction modal for adjacent tile with POIs
+   */
+  show(position, territory) {
+    // For now, just update hover info to show what's there
+    // Could be expanded into a modal later
+    this.updateHoverInfo(position, territory);
+    
+    // Log available interactions
+    const nodes = this.resourceNodeManager?.getNodesAt(position.q, position.r) || [];
+    const npcs = this.npcManager?.getNPCsAtTile(position) || [];
+    
+    let message = `🔍 Adjacent tile (${position.q}, ${position.r}): `;
+    if (nodes.length > 0) message += `${nodes.length} resource(s) `;
+    if (npcs.length > 0) message += `${npcs.length} NPC(s) `;
+    if (territory?.hasEvent) message += `event available `;
+    message += '— Move there to interact.';
+    
+    this.addGameLog(message);
+  }
+
   updateCurrentTile(position, territory) {
     this.currentPosition = position;
     this.currentTile = territory;
